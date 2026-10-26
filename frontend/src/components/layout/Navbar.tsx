@@ -17,6 +17,7 @@ import {
   Palette,
   Sparkles,
   GraduationCap,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -79,6 +80,12 @@ export const Navbar: React.FC = () => {
     ...(hasRole('STUDENT') ? [{ name: 'My Profile & Resume', href: '/students/profile', icon: GraduationCap }] : []),
     ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'AUDITOR'])
       ? [{ name: 'Student Directory', href: '/students', icon: GraduationCap }]
+      : []),
+    { name: 'Resume Reviews', href: '/preparation/resume-reviews', icon: FileCheck },
+    { name: 'Assessments', href: '/preparation/assessments', icon: Sparkles },
+    { name: 'Mock Interviews', href: '/preparation/mock-interviews', icon: Users },
+    ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'AUDITOR'])
+      ? [{ name: 'Readiness Gate', href: '/preparation/readiness-gate', icon: ShieldCheck }]
       : []),
     ...(hasRole('ADMIN') ? [{ name: 'Diagnostics', href: '/diagnostics', icon: Activity }] : []),
   ];

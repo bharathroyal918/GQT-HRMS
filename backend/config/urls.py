@@ -37,6 +37,9 @@ urlpatterns = [
                 # Students & Eligibility Engine (Phase 5)
                 path("students/", include("apps.students.urls")),
 
+                # Student Preparation (Phase 6 / Steps 15-23)
+                path("preparation/", include("apps.preparation.urls")),
+
                 # OpenAPI 3.1 Documentation
                 path("schema/", SpectacularAPIView.as_view(), name="schema"),
                 path(

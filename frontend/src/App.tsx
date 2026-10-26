@@ -36,12 +36,17 @@ import { StudentProfileWorkspacePage } from './pages/students/StudentProfileWork
 import { EligibilityWorkspacePage } from './pages/students/EligibilityWorkspacePage';
 import { CandidateCohortPage } from './pages/students/CandidateCohortPage';
 import { StudentDirectoryPage } from './pages/students/StudentDirectoryPage';
+import { ResumeReviewWorkspacePage } from './pages/preparation/ResumeReviewWorkspacePage';
+import { StudentAssessmentsPage } from './pages/preparation/StudentAssessmentsPage';
+import { MockInterviewWorkspacePage } from './pages/preparation/MockInterviewWorkspacePage';
+import { PlacementReadinessGatePage } from './pages/preparation/PlacementReadinessGatePage';
 
 const CRM_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'AUDITOR'];
 const JOB_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'CREATIVE_DESIGNER', 'AUDITOR'];
 const CREATIVE_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'CREATIVE_DESIGNER', 'AUDITOR'];
 const STAFF_PUBLISH_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER'];
 const COHORT_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'AUDITOR'];
+const PREPARATION_GATE_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'AUDITOR'];
 
 export const App: React.FC = () => {
   return (
@@ -268,6 +273,28 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute requiredRoles={COHORT_ROLES}>
                     <CandidateCohortPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Student Preparation (Phase 6 / Steps 15-23) */}
+              <Route
+                path="preparation/resume-reviews"
+                element={<ResumeReviewWorkspacePage />}
+              />
+              <Route
+                path="preparation/assessments"
+                element={<StudentAssessmentsPage />}
+              />
+              <Route
+                path="preparation/mock-interviews"
+                element={<MockInterviewWorkspacePage />}
+              />
+              <Route
+                path="preparation/readiness-gate"
+                element={
+                  <ProtectedRoute requiredRoles={PREPARATION_GATE_ROLES}>
+                    <PlacementReadinessGatePage />
                   </ProtectedRoute>
                 }
               />

@@ -1,6 +1,6 @@
 # GQT HRMS & Recruitment CRM Platform
 
-> **Status:** Phase 5 (Student Registration & Eligibility Engine — Steps 10–14) Complete & Verified  
+> **Status:** Phase 6 (Student Preparation — Steps 15–23) Complete & Verified  
 > **Source of Truth:** `docs/requirements/workflow_traceability.md` (13 Business Phases, 41 Operational Steps, 19 CRM Modules, 8 AI Capabilities)  
 > **Role & Permission Matrix:** `docs/security/role_permission_matrix.md` (9 Operational Roles, Deny-by-Default, Object-Level Ownership)  
 > **Target Database:** Supabase-hosted PostgreSQL 16 Engine with SSL  
@@ -20,9 +20,10 @@
 | **Job Intake Subsystem** | Requirements, 5-Point Verification Checklist, Head Sign-off | `apps.jobs` module with relational checklist entities, gated Placement Head approval, draft immutability post-approval, and operational queues |
 | **Creative Studio Subsystem** | Promotional Assets, 4-Point Checklist, Versioning, Sign-off | `apps.creatives` module with monotonic versioning, SVG/magic bytes file security, 4-point design verification checklist, and gated Placement Head sign-off |
 | **Students & Eligibility Subsystem** | Broadcast, Registration, Resume Vault, Engine, Cohorts | `apps.students` module with multi-channel broadcast (WhatsApp/Telegram/Email/Portal), PDF `%PDF-` binary magic bytes verification, deterministic eligibility engine (Decimal CGPA), and cohort locking |
+| **Student Preparation Subsystem** | Rubric Reviews, Iteration Cycles, Timed Tests, Mocks, Gate | `apps.preparation` module covering Steps 15–23 with institutional rubric scoring, monotonic resume improvement cycles, aptitude/technical tests (answer-key security), grooming certification, mock scorecards, and Placement Head final readiness approval gate |
 | **Database** | Supabase PostgreSQL 16 via `psycopg` (v3) | SSL connection (`sslmode=require`), UUIDv4 primary keys, normalized case-insensitive email uniqueness, transactional operations |
 | **Security** | Argon2id, Fail-Closed Config, Log Redaction | Server-side validation, `SensitiveDataFilter` redacting secrets in logs, request correlation IDs (`X-Correlation-ID`) |
-| **Testing** | pytest-django, Vitest | 138 backend unit/integration tests, 35 frontend component/route tests (173 total automated tests), strict TypeScript checks |
+| **Testing** | pytest-django, Vitest | 160 backend unit/integration tests, 41 frontend component/route tests (201 total automated tests), strict TypeScript checks |
 
 
 
@@ -282,21 +283,14 @@ gqt-hrms/
 ```
 
 ---
+ 
+## 7. Next Phase: Company Submission & Profile Dispatch (Steps 24–28)
 
-## 7. Next Phase: Student Preparation & Assessment (Steps 15–23)
-
-Phase 5 (Student Registration & Eligibility Engine — Steps 10–14) is complete and verified with 100% green automated tests. The system is paused awaiting explicit authorization before beginning:
-* **Phase 6: Student Preparation (Steps 15–23)**
-  * Step 15: Resume review against institutional rubric.
-  * Step 16: Resume improvement iteration cycle with monotonic versioning.
-  * Step 17: Aptitude assessment engine (quantitative, logical, verbal).
-  * Step 18: Technical domain assessment with answer-key security.
-  * Step 19: Communication & presentation training tracking.
-  * Step 20: Corporate grooming & professional etiquette certification.
-  * Step 21: One-on-one simulated mock interview scheduling.
-  * Step 22: Mock interview rubric grading & candidate readiness scorecards.
-  * Step 23: Final placement resume certification gate (`is_approved_for_placements = True`).
-
-
-
+Phase 6 (Student Preparation — Steps 15–23) is complete and verified with 100% green automated tests across all 6 quality gates (160 backend tests, 41 frontend tests). The system is strictly paused awaiting explicit authorization before beginning:
+* **Phase 7: Company Submission (Steps 24–28)**
+  * Step 24: Prepare Candidate List (filtering eligible candidates with certified placement resumes).
+  * Step 25: Generate Candidate Roster Master Spreadsheet (verified academic & contact metrics with SHA-256 fingerprint).
+  * Step 26: Attach Certified Resumes (bundling exact certified PDF versions).
+  * Step 27: Send Candidate Profiles to HR (dispatch packaging and timestamped transmission logging).
+  * Step 28: Company Acknowledgement (logging recruiter receipt and follow-up callback schedule).
 

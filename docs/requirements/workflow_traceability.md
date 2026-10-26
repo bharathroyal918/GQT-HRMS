@@ -102,16 +102,40 @@
   * *Finalization Gate:* Strictly gated to Placement Head or System Administrator. Finalization executes row locking (`select_for_update`), sets `is_locked = True`, and protects downstream candidate rosters against post-finalization mutations.  
   * *Implementation:* `apps.students.models.CandidateCohort(job_requirement, title, is_locked, finalized_by, finalized_at)` and `apps.students.models.CohortMember(cohort, student, application, is_eligible, is_override, override_reason, override_by)`.
 
-### Phase 4: Student Preparation (Steps 15–23)
-* **Step 15: Resume Review:** Placement trainers evaluate formatting, technical skills, and project summaries against rubric.
-* **Step 16: Resume Improvement Cycle:** Student iterates on resume feedback, uploads new version with monotonic versioning.
-* **Step 17: Aptitude Assessment:** Timed quantitative, logical, and verbal aptitude tests with instant automated scoring.
-* **Step 18: Technical Assessment:** Domain-specific technical test; client receives questions with answer keys strictly stripped.
-* **Step 19: Communication Training:** Workshop tracking for group discussions, corporate presentation, and communication skills.
-* **Step 20: Corporate Grooming Session:** Verification of professional etiquette, interview dress code, and corporate conduct.
-* **Step 21: One-on-One Mock Interview:** Schedule individual simulated technical and HR interviews with evaluators.
-* **Step 22: Mock Interview Rubric Evaluation:** Record scores for technical knowledge, problem solving, communication, and readiness.
-* **Step 23: Final Placement Resume Approval Gate:** Placement Head formally certifies resume readiness (`is_approved_for_placements = True`). Mandatory gate before candidate submission.
+### Phase 6: Student Preparation (Steps 15–23) [IMPLEMENTED & VERIFIED]
+* **Step 15: Resume Review**  
+  * *Business Requirement:* Placement trainers evaluate student resumes against institutional standards/rubric (formatting, technical skills, project descriptions, achievements) before corporate drive submissions.  
+  * *Implementation:* `apps.preparation.models.ResumeReview(resume, student, reviewer, status, formatting_score, technical_skills_score, projects_score, achievements_score, detailed_feedback, suggested_improvements)`.  
+  * *Validation:* Rubric scores strictly bounded between 1 and 10; mandatory constructive feedback; status transitions to `APPROVED` or `REVISION_REQUESTED`.
+* **Step 16: Resume Improvement Cycle**  
+  * *Business Requirement:* Student iterates and improves resume addressing trainer rubric feedback, re-uploading an updated version (`v2`, `v3`, ...) with monotonic versioning.  
+  * *Implementation:* `apps.preparation.models.ResumeImprovementCycle(initial_review, student, prior_resume, improved_resume, status, student_notes, submitted_at)`.  
+  * *Validation:* Preserves previous resume versions in immutable private storage; transitions cycle from `REVISION_PENDING` to `REVISED_UPLOADED`.
+* **Step 17: Aptitude Assessment**  
+  * *Business Requirement:* Timed quantitative, logical, and verbal aptitude tests evaluating freshers with instant deterministic server-side scoring.  
+  * *Implementation:* `apps.preparation.models.AssessmentTest` (type `APTITUDE`) and `apps.preparation.models.StudentAssessmentAttempt(student, test, attempt_number, score, percentage, passed, status, answers)`.  
+  * *Validation:* Enforces duration limits, computes marks deterministically, tracks monotonic attempt counts, and evaluates `passed = score >= test.passing_marks`.
+* **Step 18: Technical Assessment**  
+  * *Business Requirement:* Domain-specific technical assessments (Java, Python, SQL, Web fundamentals) with strict anti-tampering answer key stripping.  
+  * *Security Enforcement:* Question serialization for candidates strictly strips `correct_option_id` and internal explanations; grading performed exclusively server-side.  
+  * *Implementation:* `apps.preparation.models.AssessmentTest` (type `TECHNICAL`) and `apps.preparation.models.StudentAssessmentAttempt`.
+* **Step 19: Communication Skills Training**  
+  * *Business Requirement:* Track student participation, attendance, and presentation evaluation scores in institutional communication workshops.  
+  * *Implementation:* `apps.preparation.models.TrainingSession` (type `COMMUNICATION`) and `apps.preparation.models.TrainingAttendance(session, student, attendance_status, presentation_score)`.
+* **Step 20: Corporate Grooming Session**  
+  * *Business Requirement:* Professional etiquette, corporate communication, and formal dress code verification, certifying interview decorum.  
+  * *Implementation:* `apps.preparation.models.TrainingAttendance(session, student, professional_etiquette_verified, corporate_communication_verified, dress_code_verified, hr_interview_ready, grooming_certified, trainer_remarks)`.  
+  * *Validation:* Requires explicit trainer verification across etiquette, communication, and formal attire.
+* **Step 21: One-on-One Mock Interview**  
+  * *Business Requirement:* Simulated one-on-one technical and HR interviews scheduled with industry evaluators and trainers.  
+  * *Implementation:* `apps.preparation.models.MockInterview(student, evaluator, scheduled_by, interview_type, scheduled_at, meeting_link, status, notes)`.
+* **Step 22: Mock Interview Rubric Evaluation**  
+  * *Business Requirement:* Detailed scorecard evaluation recording scores for technical competence, problem solving, communication clarity, and professional readiness (out of 40), plus actionable feedback and readiness recommendation (`READY_FOR_PLACEMENTS`, `NEEDS_PRACTICE`, `NOT_READY`).  
+  * *Implementation:* `apps.preparation.models.MockInterviewEvaluation(mock_interview, evaluator, technical_competence_score, problem_solving_score, communication_clarity_score, professional_readiness_score, total_score, technical_feedback, communication_feedback, improvement_suggestions, readiness_recommendation)`.
+* **Step 23: Final Placement Resume Approval Gate**  
+  * *Business Requirement:* Placement Head formal readiness certification gate. Verifies candidate preparation across all milestones (Steps 15-22) and approves a specific resume version with `is_approved_for_placements = True`.  
+  * *Gate Rule:* Mandatory Gate before Phase 7 (Steps 24-28: Company Submission & Profile Dispatch). Only `PLACEMENT_HEAD` or `ADMIN` can authorize clearance.  
+  * *Implementation:* `apps.preparation.models.PlacementReadinessCertification(student, approved_resume, is_approved_for_placements, status, certified_by, certified_at, readiness_summary, notes)`.
 
 ### Phase 5: Company Submission (Steps 24–28)
 * **Step 24: Prepare Candidate List:** Filter eligible cohort; strictly exclude candidates without placement-approved resumes.
