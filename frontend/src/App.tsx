@@ -30,10 +30,18 @@ import { CreativeRequestFormPage } from './pages/creatives/CreativeRequestFormPa
 import { CreativeDetailPage } from './pages/creatives/CreativeDetailPage';
 import { CreativeReviewQueuePage } from './pages/creatives/CreativeReviewQueuePage';
 import { DesignerWorkQueuePage } from './pages/creatives/DesignerWorkQueuePage';
+import { JobPublicationPage } from './pages/students/JobPublicationPage';
+import { StudentRegistrationPage } from './pages/students/StudentRegistrationPage';
+import { StudentProfileWorkspacePage } from './pages/students/StudentProfileWorkspacePage';
+import { EligibilityWorkspacePage } from './pages/students/EligibilityWorkspacePage';
+import { CandidateCohortPage } from './pages/students/CandidateCohortPage';
+import { StudentDirectoryPage } from './pages/students/StudentDirectoryPage';
 
 const CRM_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'AUDITOR'];
 const JOB_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'CREATIVE_DESIGNER', 'AUDITOR'];
 const CREATIVE_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'CREATIVE_DESIGNER', 'AUDITOR'];
+const STAFF_PUBLISH_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER'];
+const COHORT_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'AUDITOR'];
 
 export const App: React.FC = () => {
   return (
@@ -46,6 +54,7 @@ export const App: React.FC = () => {
             <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
             <Route path="/access-denied" element={<AccessDeniedPage />} />
+            <Route path="/students/register" element={<StudentRegistrationPage />} />
 
             {/* Authenticated Workspace Application */}
             <Route element={<AppShell />}>
@@ -221,6 +230,44 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute requiredRoles={CREATIVE_ROLES}>
                     <CreativeDetailPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Student Registration & Eligibility Engine (Phase 5 / Steps 10-14) */}
+              <Route
+                path="students/profile"
+                element={<StudentProfileWorkspacePage />}
+              />
+              <Route
+                path="students"
+                element={
+                  <ProtectedRoute requiredRoles={COHORT_ROLES}>
+                    <StudentDirectoryPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="jobs/:id/publish"
+                element={
+                  <ProtectedRoute requiredRoles={STAFF_PUBLISH_ROLES}>
+                    <JobPublicationPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="jobs/:id/eligibility"
+                element={
+                  <ProtectedRoute requiredRoles={JOB_ROLES}>
+                    <EligibilityWorkspacePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="jobs/:id/cohort"
+                element={
+                  <ProtectedRoute requiredRoles={COHORT_ROLES}>
+                    <CandidateCohortPage />
                   </ProtectedRoute>
                 }
               />

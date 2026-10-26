@@ -1,6 +1,6 @@
 # GQT HRMS & Recruitment CRM Platform
 
-> **Status:** Phase 4 (Creative Studio & Promotional Assets Management — Steps 8–9) Complete & Verified  
+> **Status:** Phase 5 (Student Registration & Eligibility Engine — Steps 10–14) Complete & Verified  
 > **Source of Truth:** `docs/requirements/workflow_traceability.md` (13 Business Phases, 41 Operational Steps, 19 CRM Modules, 8 AI Capabilities)  
 > **Role & Permission Matrix:** `docs/security/role_permission_matrix.md` (9 Operational Roles, Deny-by-Default, Object-Level Ownership)  
 > **Target Database:** Supabase-hosted PostgreSQL 16 Engine with SSL  
@@ -19,9 +19,10 @@
 | **CRM Subsystem** | Corporate Directory, HR Contacts, Outreach, Tasks | `apps.crm` module with dynamic overdue evaluation, 100+ outreach/day target tracking, duplicate candidate detection, and audit trail logging |
 | **Job Intake Subsystem** | Requirements, 5-Point Verification Checklist, Head Sign-off | `apps.jobs` module with relational checklist entities, gated Placement Head approval, draft immutability post-approval, and operational queues |
 | **Creative Studio Subsystem** | Promotional Assets, 4-Point Checklist, Versioning, Sign-off | `apps.creatives` module with monotonic versioning, SVG/magic bytes file security, 4-point design verification checklist, and gated Placement Head sign-off |
+| **Students & Eligibility Subsystem** | Broadcast, Registration, Resume Vault, Engine, Cohorts | `apps.students` module with multi-channel broadcast (WhatsApp/Telegram/Email/Portal), PDF `%PDF-` binary magic bytes verification, deterministic eligibility engine (Decimal CGPA), and cohort locking |
 | **Database** | Supabase PostgreSQL 16 via `psycopg` (v3) | SSL connection (`sslmode=require`), UUIDv4 primary keys, normalized case-insensitive email uniqueness, transactional operations |
 | **Security** | Argon2id, Fail-Closed Config, Log Redaction | Server-side validation, `SensitiveDataFilter` redacting secrets in logs, request correlation IDs (`X-Correlation-ID`) |
-| **Testing** | pytest-django, Vitest | 111 backend unit/integration tests, 29 frontend component/route tests (140 total automated tests), strict TypeScript checks |
+| **Testing** | pytest-django, Vitest | 138 backend unit/integration tests, 35 frontend component/route tests (173 total automated tests), strict TypeScript checks |
 
 
 
@@ -282,15 +283,19 @@ gqt-hrms/
 
 ---
 
-## 7. Next Phase: Student Registration & Notice Broadcast
+## 7. Next Phase: Student Preparation & Assessment (Steps 15–23)
 
-Phase 4 (Creative Studio & Promotional Assets Management — Steps 8–9) is complete and verified. The system is paused awaiting review before beginning:
-* **Phase 5: Student Registration & Eligibility Engine (`apps.students` — Steps 10–14)**
-  * Step 10: Publish Job Notification & broadcast channels (WhatsApp, Email, Portal).
-  * Step 11: Student registration & academic profile collection.
-  * Step 12: Student resume ingestion with binary magic bytes validation (`%PDF-`).
-  * Step 13: Multi-factor eligibility rule verification engine.
-  * Step 14: Eligible candidate cohort finalization & Placement Officer manual override audit.
+Phase 5 (Student Registration & Eligibility Engine — Steps 10–14) is complete and verified with 100% green automated tests. The system is paused awaiting explicit authorization before beginning:
+* **Phase 6: Student Preparation (Steps 15–23)**
+  * Step 15: Resume review against institutional rubric.
+  * Step 16: Resume improvement iteration cycle with monotonic versioning.
+  * Step 17: Aptitude assessment engine (quantitative, logical, verbal).
+  * Step 18: Technical domain assessment with answer-key security.
+  * Step 19: Communication & presentation training tracking.
+  * Step 20: Corporate grooming & professional etiquette certification.
+  * Step 21: One-on-one simulated mock interview scheduling.
+  * Step 22: Mock interview rubric grading & candidate readiness scorecards.
+  * Step 23: Final placement resume certification gate (`is_approved_for_placements = True`).
 
 
 

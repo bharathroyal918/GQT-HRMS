@@ -34,6 +34,9 @@ urlpatterns = [
                 # Creative Studio & Promotional Assets (Phase 4)
                 path("creatives/", include("apps.creatives.urls")),
 
+                # Students & Eligibility Engine (Phase 5)
+                path("students/", include("apps.students.urls")),
+
                 # OpenAPI 3.1 Documentation
                 path("schema/", SpectacularAPIView.as_view(), name="schema"),
                 path(

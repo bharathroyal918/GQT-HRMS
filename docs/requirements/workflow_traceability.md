@@ -78,23 +78,29 @@
   * *Security Rule:* Uploaded files validated with binary magic bytes; SVG rejected (XSS defense); monotonic version numbering; authenticated streaming delivery.
   * *Status:* ✅ Implemented & verified (Phase 4).
 
-### Phase 3: Student Registration (Steps 10–14)
+### Phase 5: Student Registration & Eligibility Engine (Steps 10–14) [IMPLEMENTED & VERIFIED]
 * **Step 10: Publish Job Notification**  
-  * *Business Requirement:* Broadcast approved opportunity to student channels (WhatsApp, Telegram, Email, Portal).  
-  * *Required Entity:* `JobPublication(job_requirement, channel, published_at)`.
+  * *Business Requirement:* Broadcast approved opportunity to student channels (WhatsApp, Telegram, Email, Portal noticeboard).  
+  * *Gate Rule:* Strictly gated on Step 7 sign-off (`JobRequirement.status == 'APPROVED'`). Fails closed on draft, returned, or unapproved jobs.
+  * *Creative Linkage:* Connects approved Step 9 promotional assets (`CreativeAssetVersion.is_approved == True`).
+  * *Implementation:* `apps.students.models.JobPublication(job_requirement, creative_version, channel, status, target_audience, dispatched_at, delivered_at, provider_message_id)`.
 * **Step 11: Student Registration**  
-  * *Business Requirement:* Onboard students via CRM portal/Google form with roll number & email uniqueness.  
-  * *Required Entity:* `StudentProfile(user, roll_number, college, department, graduation_year, cgpa)`.
+  * *Business Requirement:* Onboard student candidates via CRM portal with strict uniqueness on normalized institutional email (case-insensitive lowercase) and roll number (case-insensitive uppercase).  
+  * *Role Isolation:* Automatically assigns `RoleCatalog.STUDENT`; zero capability for self-escalation.
+  * *Implementation:* `apps.students.models.StudentProfile(user, roll_number, institutional_email, college_name, degree, department, graduation_year, cgpa, active_backlogs)`.
 * **Step 12: Collect Student Profile & Resume**  
-  * *Business Requirement:* Ingest student academic metrics and resume PDF.  
-  * *Required Entity:* `StudentResume(student, version_number, file, sha256_hash)`.  
-  * *Security Rule:* Binary magic bytes check (`%PDF-`), SHA-256 fingerprinting, 5MB limit.
+  * *Business Requirement:* Ingest student academic metrics and resume PDF documents in private isolated storage.  
+  * *Security Enforcement:* Validates binary signature `%PDF-` (`b"%PDF-"`), rejects spoofed extensions, enforces 5MB limit (`MAX_RESUME_UPLOAD_SIZE_BYTES`), computes cryptographic SHA-256 fingerprint, and provisions monotonic version numbers (`v1`, `v2`, ...).  
+  * *Private Streaming:* Resumes served exclusively via authenticated `FileResponse` behind `IsStudentOwnerOrStaff` object-level permissions (student-to-student data isolation enforced; 403 Forbidden).
+  * *Implementation:* `apps.students.models.StudentResume(student, version_number, file, file_name, file_size_bytes, sha256_hash, is_current)`.
 * **Step 13: Eligibility Verification Engine**  
-  * *Business Requirement:* Multi-factor rule evaluation (branch, CGPA, backlogs, graduation year).  
-  * *Required Entity:* `EligibilityRule`, `StudentApplication(student, job_requirement, status)`.
-* **Step 14: Eligible Students Cohort**  
-  * *Business Requirement:* Finalize eligible candidate cohort; allow Placement Officer manual override with mandatory audit reason.  
-  * *Required Entity:* `EligibilityEvaluation(application, is_eligible, override_reason, override_by)`.
+  * *Business Requirement:* Deterministic, auditable rule evaluation evaluating 4 core criteria (Branch/Discipline matching, Decimal CGPA threshold comparison, standing arrears cutoff, and graduation passing batch).  
+  * *Explainability:* Produces structured criterion-level breakdown cards with exact required vs. actual values.  
+  * *Implementation:* `apps.students.models.StudentApplication(student, job_requirement, resume, status)` and `apps.students.models.EligibilityEvaluation(application, status, criteria_snapshot, evaluation_details)`.
+* **Step 14: Eligible Candidate Cohort Finalization**  
+  * *Business Requirement:* Formally assemble verified candidate roster. Allows Placement Officers and Placement Heads to authorize manual eligibility overrides with mandatory justification (>= 10 characters) and verifier attribution.  
+  * *Finalization Gate:* Strictly gated to Placement Head or System Administrator. Finalization executes row locking (`select_for_update`), sets `is_locked = True`, and protects downstream candidate rosters against post-finalization mutations.  
+  * *Implementation:* `apps.students.models.CandidateCohort(job_requirement, title, is_locked, finalized_by, finalized_at)` and `apps.students.models.CohortMember(cohort, student, application, is_eligible, is_override, override_reason, override_by)`.
 
 ### Phase 4: Student Preparation (Steps 15–23)
 * **Step 15: Resume Review:** Placement trainers evaluate formatting, technical skills, and project summaries against rubric.

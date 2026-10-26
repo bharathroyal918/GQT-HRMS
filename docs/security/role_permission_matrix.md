@@ -115,6 +115,17 @@ To prevent broken object-level authorization (IDOR / BOLA):
 - **Denied Roles (`STUDENT`, `TRAINER`, `EVALUATOR`, `HR_RELATIONSHIP_MGR`):** Zero access to creative studio production and approval endpoints (`403 Forbidden`).
 - **Post-Approval Immutability:** Once approved, an asset version is immutable (`is_locked=True`). Revisions require uploading a new version with an incremented version number, which automatically resets the checklist and requires complete re-verification.
 
+### 4.4. Phase 5 Confirmed Student Registration & Eligibility Engine Permissions (Implemented & Verified)
+- **Job Publication (`CanPublishJobNotification`):** Gated to `ADMIN`, `PLACEMENT_HEAD`, and `PLACEMENT_OFFICER`. Only `APPROVED` job requirements can be broadcasted. Dispatches to WhatsApp, Telegram, Email, and Portal noticeboard.
+- **Student Identity & Isolation (`IsStudentOwnerOrStaff`):**
+  - Newly registered student accounts receive `RoleCatalog.STUDENT`. Privileged role self-assignment is blocked.
+  - Students can only view and mutate their own profile, resumes, and drive applications.
+  - Accessing another candidate's private profile, resume binary, or eligibility records returns `403 Forbidden`.
+- **Private Resume Delivery:** Streaming download endpoint (`/api/v1/students/resumes/<id>/download/`) authenticates every request; public inline media rendering is disabled.
+- **Manual Eligibility Overrides (`CanOverrideEligibility`):** Gated to `ADMIN`, `PLACEMENT_HEAD`, and `PLACEMENT_OFFICER`. Requires mandatory business justification (>= 10 characters) and records immutable verifier attribution.
+- **Cohort Finalization Gate (`CanFinalizeCohort`):** Restricted strictly to `ADMIN` and `PLACEMENT_HEAD`. Placement Officers cannot finalize or lock cohorts (`403 Forbidden`). Once finalized, cohorts are locked (`is_locked = True`) to prevent mutations before candidate packaging and corporate submission.
+- **Auditor Access (`CanViewCohort`):** `AUDITOR` holds read-only access to publication history, student talent directory, eligibility evaluations, and finalized cohorts. All mutating actions return `403 Forbidden`.
+
 ---
 
 ## 5. Explicitly Denied Actions
