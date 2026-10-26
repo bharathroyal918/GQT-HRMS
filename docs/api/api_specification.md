@@ -85,3 +85,58 @@ All error responses (400, 401, 403, 404, 500) follow a standardized format:
 | `PATCH` | `/api/v1/auth/users/{id}/status/` | Admin (`ADMIN`) | Activate or deactivate user account with self-deactivation prevention. |
 | `POST` | `/api/v1/auth/users/{id}/roles/` | Admin (`ADMIN`) | Atomically assign or revoke operational roles for a user. |
 
+---
+
+## 5. Phase 2: Corporate CRM & HR Directory Endpoints
+
+### 5.1 Corporate Companies
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/api/v1/crm/companies/` | CRM Staff / Auditor | List and filter companies by domain category, status, tier, city, owner. |
+| `POST` | `/api/v1/crm/companies/` | CRM Staff | Create corporate company with automatic name and domain normalization. |
+| `GET` | `/api/v1/crm/companies/{id}/` | CRM Staff / Auditor | Retrieve full company profile with nested contacts and counts. |
+| `PATCH` | `/api/v1/crm/companies/{id}/` | CRM Staff | Update corporate company profile with audit trail diff logging. |
+| `GET` | `/api/v1/crm/companies/check-duplicate/` | CRM Staff / Auditor | Cautiously evaluate duplicate candidates by normalized name or canonical domain. |
+| `POST` | `/api/v1/crm/companies/{id}/archive/` | CRM Staff | Safely archive company while preserving historical touchpoint integrity. |
+| `POST` | `/api/v1/crm/companies/{id}/restore/` | CRM Staff | Restore an archived company profile. |
+| `GET` | `/api/v1/crm/companies/{id}/contacts/` | CRM Staff / Auditor | Paginated list of HR contacts belonging to this company. |
+| `GET` | `/api/v1/crm/companies/{id}/outreach/` | CRM Staff / Auditor | Paginated history of outreach touchpoints logged for this company. |
+| `GET` | `/api/v1/crm/companies/{id}/follow-ups/` | CRM Staff / Auditor | Paginated list of scheduled follow-ups for this company. |
+
+### 5.2 HR Contacts Directory
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/api/v1/crm/contacts/` | CRM Staff / Auditor | Search and list corporate HR recruiters with filtering by status and company. |
+| `POST` | `/api/v1/crm/contacts/` | CRM Staff | Register new HR recruiter associated with a valid company. |
+| `GET` | `/api/v1/crm/contacts/{id}/` | CRM Staff / Auditor | Retrieve HR contact details and audit notes. |
+| `PATCH` | `/api/v1/crm/contacts/{id}/` | CRM Staff | Update HR contact communication details. |
+| `GET` | `/api/v1/crm/contacts/check-duplicate/` | CRM Staff / Auditor | Check for duplicate email or phone within the company. |
+| `POST` | `/api/v1/crm/contacts/{id}/archive/` | CRM Staff | Archive HR contact. |
+| `POST` | `/api/v1/crm/contacts/{id}/restore/` | CRM Staff | Restore archived HR contact. |
+
+### 5.3 Multi-Channel Outreach Logging
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/api/v1/crm/outreach/` | CRM Staff / Auditor | Retrieve append-only history of outreach touchpoints with filtering. |
+| `POST` | `/api/v1/crm/outreach/` | CRM Staff | Record completed outreach touchpoint; enforces company/contact relationship. |
+| `GET` | `/api/v1/crm/outreach/{id}/` | CRM Staff / Auditor | Retrieve single outreach activity record. |
+
+### 5.4 Follow-Up Queue & Lifecycle
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/api/v1/crm/follow-ups/` | CRM Staff / Auditor | List scheduled follow-ups with status, priority, and date range filters. |
+| `GET` | `/api/v1/crm/follow-ups/overdue/` | CRM Staff / Auditor | List currently overdue follow-ups (`is_overdue=true`). |
+| `POST` | `/api/v1/crm/follow-ups/` | CRM Staff | Schedule corporate follow-up task with assigned owner and due date. |
+| `GET` | `/api/v1/crm/follow-ups/{id}/` | CRM Staff / Auditor | Retrieve follow-up details. |
+| `POST` | `/api/v1/crm/follow-ups/{id}/reschedule/` | CRM Staff | Reschedule open/in-progress task with audit trail and incremented counter. |
+| `POST` | `/api/v1/crm/follow-ups/{id}/complete/` | CRM Staff | Complete follow-up task with timestamp, actor, and completion notes. |
+| `POST` | `/api/v1/crm/follow-ups/{id}/cancel/` | CRM Staff | Cancel follow-up task with mandatory cancellation reason. |
+| `POST` | `/api/v1/crm/follow-ups/{id}/reopen/` | CRM Staff | Formally reopen completed or cancelled task with new due date. |
+
+### 5.5 CRM Operational Metrics & Configurations
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/api/v1/crm/dashboard/metrics/` | CRM Staff / Auditor | Retrieve KPI metrics, channel counts, and 100/day benchmark progress. |
+| `GET` | `/api/v1/crm/config/` | CRM Staff / Auditor | Retrieve system operational configurations (e.g. `DAILY_OUTREACH_TARGET`). |
+| `POST` | `/api/v1/crm/config/` | Admin / Head | Update operational target values. |
+

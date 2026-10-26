@@ -91,6 +91,12 @@ To prevent broken object-level authorization (IDOR / BOLA):
 - **Placement Trainers (`TRAINER`):** Can view and grade student assessment cohorts and feedback forms for batches they instruct.
 - **Corporate CRM Managers (`HR_RELATIONSHIP_MGR`):** Can view and manage corporate outreach queues, but cannot modify student placement records or trigger offer withdrawals.
 
+### 4.1. Phase 2 Confirmed Corporate CRM Permissions (Implemented & Verified)
+- **CRM Operational Roles:** `ADMIN`, `PLACEMENT_HEAD`, `PLACEMENT_OFFICER`, and `HR_RELATIONSHIP_MGR` hold complete operational read/write access to Companies, HR Contacts, Outreach Logs, Follow-ups, and Dashboard Metrics.
+- **Compliance Auditor Role (`AUDITOR`):** Strictly restricted to `SAFE_METHODS` (`GET`, `HEAD`, `OPTIONS`). All mutating operations (`POST`, `PUT`, `PATCH`, `DELETE`) return `403 Forbidden: Auditors hold read-only privileges and cannot modify CRM records`.
+- **Denied Roles (`STUDENT`, `CREATIVE_DESIGNER`, `TRAINER`, `EVALUATOR`):** Have zero access to CRM endpoints (`403 Forbidden: You do not have authorization to access Corporate CRM records`).
+- **Configuration Management (`CRMConfiguration`):** Updating operational targets like `DAILY_OUTREACH_TARGET` is restricted to `ADMIN` and `PLACEMENT_HEAD` (`IsCRMManagerOrAdmin`).
+
 ---
 
 ## 5. Explicitly Denied Actions

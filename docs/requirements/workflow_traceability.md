@@ -30,22 +30,27 @@
 
 ## 2. 41-Step End-to-End Operational Traceability Matrix
 
-### Phase 1: Company Acquisition (Steps 1–4)
+### Phase 1: Company Acquisition (Steps 1–4) — [STATUS: IMPLEMENTED & TESTED IN PHASE 2]
 * **Step 1: Identify Target Companies**  
   * *Business Requirement:* Market research on fresher hiring companies categorized by domain (IT, Core, BPO, Finance, etc.).  
-  * *Required Entity:* `Company(name, domain_category, website, city, lifecycle_status)`.  
-  * *Validation:* Normalized lowercase duplicate detection on corporate legal name and website URL.
+  * *Implemented Entity:* `apps.crm.models.Company` (name, normalized_name, domain_category, website, domain, tier, relationship_status, city, state, country, owner).  
+  * *Validation:* Normalized lowercase alphanumeric duplicate detection and canonical root domain collision checking (`check_company_duplicates`).
+  * *Status:* ✅ Implemented, 26 backend tests + 5 frontend tests verified.
 * **Step 2: Contact HRs**  
-  * *Business Requirement:* Multi-channel outreach (Calls, Emails, LinkedIn, WhatsApp) targeting 100+ HRs/day.  
-  * *Required Entity:* `OutreachLog(company, hr_contact, channel, state, outcome, notes)`.  
-  * *Validation:* Channel enum enforcement; daily quota aggregator.
+  * *Business Requirement:* Multi-channel outreach (Calls, Emails, LinkedIn, WhatsApp, In-Person) targeting 100+ HRs/day.  
+  * *Implemented Entity:* `apps.crm.models.OutreachLog` (company, hr_contact, performed_by, channel, direction, activity_date, outcome, subject, notes, followup_required).  
+  * *Validation:* Append-only history; contact-company relationship verification; daily quota aggregation against configurable target.
+  * *Status:* ✅ Implemented & verified.
 * **Step 3: Record HR Information**  
   * *Business Requirement:* Maintain directory of HR talent leads with email, phone, LinkedIn, and callback dates.  
-  * *Required Entity:* `HRContact(company, name, designation, email, phone, next_followup_date)`.  
-  * *Validation:* Unique email per corporate entity; international phone format.
+  * *Implemented Entity:* `apps.crm.models.HRContact` (company, name, designation, department, email, phone, alt_phone, linkedin_url, preferred_channel, status, owner).  
+  * *Validation:* Contact duplicate checking within company; safe archival with historical preservation.
+  * *Status:* ✅ Implemented & verified.
 * **Step 4: HR Response & Follow-up**  
   * *Business Requirement:* If interested, trigger JD intake; if not interested, schedule relationship nurturing follow-up.  
-  * *Required Entity:* `FollowUp(company, hr_contact, due_at, priority, status, outcome)`.
+  * *Implemented Entity:* `apps.crm.models.FollowUp` (company, hr_contact, assigned_to, due_date, priority, status, purpose, completion_notes, completed_at, completed_by, cancellation_reason, rescheduled_count).  
+  * *Validation:* Dynamic `is_overdue` evaluation; strict state transition lifecycle (OPEN/IN_PROGRESS -> COMPLETED/CANCELLED); authorized reopening workflow.
+  * *Status:* ✅ Implemented & verified.
 
 ### Phase 2: Job Requirement Management (Steps 5–9)
 * **Step 5: Collect Job Description**  

@@ -75,3 +75,39 @@ Every business domain follows a strict 5-layer separation of concerns:
   * Dual-transport JWT authentication via `HttpOnlyCookieJWTAuthentication` (SameSite cookies `gqt_access_token` and `gqt_refresh_token` for browser; Bearer header fallback for API consumers).
   * Refresh token rotation and replay prevention backed by `rest_framework_simplejwt.token_blacklist`.
   * Centralized `AuthContext` on frontend with `ProtectedRoute` guards and role-aware navigation. Zero credentials stored in web storage.
+
+---
+
+## 5. Corporate CRM & HR Directory Domain (`apps.crm`)
+* **Company Model (`crm_company`):**
+  * `id`: UUIDv4 primary key.
+  * `name`, `normalized_name`: Indexed normalized corporate name for cautious duplicate identification.
+  * `website`, `canonical_domain`: Extracted root domain (`google.com`, `infosys.com`) with validation.
+  * `domain_category`: 9 industry classifications (`IT_SERVICES`, `PRODUCT_SAAS`, `CORE_ENGINEERING`, `BFSI`, `BPO_ITES`, `EDTECH`, `HEALTHCARE`, `CONSULTING`, `OTHER`).
+  * `tier`: Tier 1 (Product/MNC/FAANG), Tier 2 (Mid-market/Service), Tier 3 (Startup/Boutique).
+  * `relationship_status`: Discovered, Outreach in Progress, Connected, Interested, Active Hiring Partner, Not Interested, On Hold.
+  * Relationship ownership, location, internal notes, archival flags, audit timestamps.
+* **HR Contact Model (`crm_hr_contact`):**
+  * `company_id`: Foreign key with `on_delete=models.PROTECT`.
+  * `name`, `designation`, `department`, `email`, `phone`, `linkedin_url`, `preferred_channel`.
+  * `status`: Active, Inactive, Left Company, Do Not Contact.
+  * Last contacted and next follow-up dates (derived from real outreach & tasks).
+* **Outreach Log Model (`crm_outreach_log`):**
+  * Append-only activity touchpoint journal.
+  * `company_id`, `hr_contact_id` (validated: contact must belong to company).
+  * `channel`: Phone Call, Email, LinkedIn InMail, WhatsApp, Campus Visit, In-Person Meeting, Virtual Meeting, Other.
+  * `direction`: Outbound vs. Inbound.
+  * `outcome`: Connected - Positive, Connected - Neutral, Connected - Gatekeeper Block, No Answer, Left Voicemail, Email Replied, LinkedIn Accepted, Meeting Scheduled, Job Shared, Not Interested, Other.
+  * Automatic status advancement: First outreach advances `DISCOVERED` company to `OUTREACH_IN_PROGRESS`.
+* **Follow-Up Model (`crm_follow_up`):**
+  * Priority follow-up task engine with explicit status lifecycle: `OPEN`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED`.
+  * Dynamic `is_overdue` state: `due_date < timezone.now()` while in `OPEN` or `IN_PROGRESS`.
+  * Audited operations: scheduling, reassignment, completion, cancellation (reason required), and explicit reopening.
+* **Duplicate Detection Engine:**
+  * Exact and normalized name matching with case and special character stripping.
+  * Canonical corporate domain matching.
+  * HR contact duplicate detection within company by email and normalized phone number.
+* **Daily Outreach Targets & Operational Metrics:**
+  * System-wide configurable daily target (default: 100+ outreach/day) managed via `crm_configuration`.
+  * Permission-aware metrics calculation aggregated across timezones for today's outreach, channel distributions, overdue follow-ups, and active partner counts.
+

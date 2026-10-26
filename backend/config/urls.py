@@ -25,6 +25,9 @@ urlpatterns = [
                 # Identity, Authentication & RBAC
                 path("auth/", include("apps.accounts.urls")),
 
+                # Corporate CRM & HR Directory
+                path("crm/", include("apps.crm.urls")),
+
                 # OpenAPI 3.1 Documentation
                 path("schema/", SpectacularAPIView.as_view(), name="schema"),
                 path(

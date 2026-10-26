@@ -2,15 +2,42 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { GQTLogo } from '../brand/GQTLogo';
-import { LayoutDashboard, Activity, FileCode2, LogOut, User as UserIcon } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Activity,
+  FileCode2,
+  LogOut,
+  User as UserIcon,
+  Building2,
+  Users,
+  PhoneCall,
+  Calendar,
+} from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout, hasAnyRole, hasRole } = useAuth();
+
+  const canAccessCRM = hasAnyRole([
+    'ADMIN',
+    'PLACEMENT_HEAD',
+    'PLACEMENT_OFFICER',
+    'HR_RELATIONSHIP_MGR',
+    'AUDITOR',
+  ]);
 
   const navLinks = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-    { name: 'System Diagnostics', href: '/diagnostics', icon: Activity },
+    ...(canAccessCRM
+      ? [
+          { name: 'Corporate CRM', href: '/crm', icon: Building2 },
+          { name: 'Companies', href: '/crm/companies', icon: Building2 },
+          { name: 'Contacts', href: '/crm/contacts', icon: Users },
+          { name: 'Outreach', href: '/crm/outreach', icon: PhoneCall },
+          { name: 'Follow-ups', href: '/crm/follow-ups', icon: Calendar },
+        ]
+      : []),
+    ...(hasRole('ADMIN') ? [{ name: 'Diagnostics', href: '/diagnostics', icon: Activity }] : []),
   ];
 
   return (
