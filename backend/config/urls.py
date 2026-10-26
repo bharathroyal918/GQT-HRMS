@@ -22,6 +22,9 @@ urlpatterns = [
                 # Core Infrastructure & Diagnostics
                 path("", include("apps.core.urls", namespace="core")),
 
+                # Identity, Authentication & RBAC
+                path("auth/", include("apps.accounts.urls")),
+
                 # OpenAPI 3.1 Documentation
                 path("schema/", SpectacularAPIView.as_view(), name="schema"),
                 path(

@@ -1,11 +1,12 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { GQTLogo } from '../brand/GQTLogo';
-import { StatusBadge } from '../common/StatusBadge';
-import { LayoutDashboard, Activity, FileCode2 } from 'lucide-react';
+import { LayoutDashboard, Activity, FileCode2, LogOut, User as UserIcon } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
+  const { user, isAuthenticated, logout } = useAuth();
 
   const navLinks = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -43,9 +44,8 @@ export const Navbar: React.FC = () => {
             })}
           </nav>
 
-          {/* Right Tools & Badges */}
+          {/* Right Tools, User State & Actions */}
           <div className="flex items-center gap-3">
-            <StatusBadge variant="info" label="Foundation Stage" />
             <a
               href="http://localhost:8000/api/v1/schema/swagger/"
               target="_blank"
@@ -55,6 +55,33 @@ export const Navbar: React.FC = () => {
               <FileCode2 className="w-3.5 h-3.5 text-gqt-blue" />
               API Docs
             </a>
+
+            {isAuthenticated && user ? (
+              <div className="flex items-center gap-2.5 pl-2 border-l border-gqt-neutral-200">
+                <div className="hidden sm:flex flex-col items-end leading-none">
+                  <span className="text-xs font-bold text-gqt-navy">{user.full_name}</span>
+                  <span className="text-[10px] font-semibold text-gqt-neutral-500 uppercase mt-0.5">
+                    {user.roles.length > 0 ? user.roles[0] : 'Member'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => logout()}
+                  title="Sign out of GQT HRMS"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors border border-transparent hover:border-red-200"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
+              </div>
+            ) : (
+              <Link
+                to="/login"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gqt-blue text-white hover:bg-gqt-blue-dark transition-colors shadow-sm"
+              >
+                <UserIcon className="w-3.5 h-3.5" />
+                Sign In
+              </Link>
+            )}
           </div>
         </div>
       </div>

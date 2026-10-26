@@ -60,3 +60,18 @@ Every business domain follows a strict 5-layer separation of concerns:
 * **Form Validation:** React Hook Form with Zod runtime validation schemas.
 * **API Client:** Axios with CSRF cookie auto-injection, Correlation ID propagation, and standard error extraction.
 * **Bundle Optimization:** Route-level code splitting and manual vendor chunking (`vendor-react`, `vendor-query`, `vendor-forms`, `vendor-icons`).
+
+---
+
+## 4. Identity, Authentication & RBAC Domain (`apps.accounts`)
+* **Custom User Model (`accounts_user`):**
+  * `id`: UUIDv4 primary key.
+  * `email`: Normalized, case-insensitive unique authentication identity (`Lower('email')`).
+  * Account status flags: `is_active`, `is_staff`, `is_superuser`.
+* **Role-Based Access Control (`accounts_role`, `accounts_user_role_assignment`):**
+  * Normalized relational assignment model with active status flags and assignment audit references (`assigned_by`, `assigned_at`).
+  * 9 operational roles: `ADMIN`, `PLACEMENT_HEAD`, `PLACEMENT_OFFICER`, `HR_RELATIONSHIP_MGR`, `CREATIVE_DESIGNER`, `TRAINER`, `EVALUATOR`, `STUDENT`, `AUDITOR`.
+* **Authentication Subsystem:**
+  * Dual-transport JWT authentication via `HttpOnlyCookieJWTAuthentication` (SameSite cookies `gqt_access_token` and `gqt_refresh_token` for browser; Bearer header fallback for API consumers).
+  * Refresh token rotation and replay prevention backed by `rest_framework_simplejwt.token_blacklist`.
+  * Centralized `AuthContext` on frontend with `ProtectedRoute` guards and role-aware navigation. Zero credentials stored in web storage.

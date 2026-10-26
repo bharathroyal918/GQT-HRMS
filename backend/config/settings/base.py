@@ -8,6 +8,7 @@ Architectural Standards:
 """
 from pathlib import Path
 import os
+from datetime import timedelta
 import environ
 
 # Build paths inside the project: BASE_DIR is the backend/ directory
@@ -44,8 +45,8 @@ DEV_FALLBACK_SECRET_KEY = (
     "django-insecure-dev-only-secret-key-must-be-rotated-for-production-min-50-chars"
 )
 
-# Secret key evaluation: In production or when DEBUG is False, never use fallback
-if ENVIRONMENT == "production" or not DEBUG:
+# Secret key evaluation: In production, never use fallback
+if ENVIRONMENT == "production":
     SECRET_KEY = env("DJANGO_SECRET_KEY", default="")
 else:
     SECRET_KEY = env("DJANGO_SECRET_KEY", default=DEV_FALLBACK_SECRET_KEY)
@@ -64,15 +65,21 @@ DJANGO_APPS = [
 
 THIRD_PARTY_APPS = [
     "rest_framework",
+    "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "drf_spectacular",
 ]
 
 LOCAL_APPS = [
     "apps.core.apps.CoreConfig",
+    "apps.accounts.apps.AccountsConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+
+# Custom User Model
+AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
     "apps.core.middleware.CorrelationIdMiddleware",
@@ -179,7 +186,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Django REST Framework Configuration
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework.authentication.SessionAuthentication",
+        "apps.accounts.authentication.HttpOnlyCookieJWTAuthentication",
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
@@ -196,8 +204,35 @@ REST_FRAMEWORK = {
         "anon": "100/minute",
         "user": "1000/minute",
         "health": "300/minute",
+        "auth": "10/minute",
     },
 }
+
+# SimpleJWT Configuration
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
+    "VERIFYING_KEY": None,
+    "AUDIENCE": None,
+    "ISSUER": "gqt-hrms-auth",
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+}
+
+# JWT Cookie Configuration for Web Frontend
+JWT_AUTH_COOKIE = "gqt_access_token"
+JWT_REFRESH_COOKIE = "gqt_refresh_token"
+JWT_COOKIE_SECURE = env.bool("JWT_COOKIE_SECURE", default=False)
+JWT_COOKIE_SAMESITE = "Lax"
+JWT_COOKIE_PATH = "/"
+JWT_REFRESH_COOKIE_PATH = "/api/v1/auth/"
 
 # drf-spectacular OpenAPI 3.1 Settings
 SPECTACULAR_SETTINGS = {

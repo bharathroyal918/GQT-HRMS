@@ -65,3 +65,23 @@ All error responses (400, 401, 403, 404, 500) follow a standardized format:
   }
 }
 ```
+
+---
+
+## 4. Phase 1: Identity, Authentication & RBAC Endpoints
+
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :---: | :--- |
+| `POST` | `/api/v1/auth/login/` | Public (Throttled) | Authenticate with normalized email & password; sets HttpOnly cookies. |
+| `POST` | `/api/v1/auth/logout/` | Authenticated / Public | Blacklists refresh token and clears `gqt_access_token` / `gqt_refresh_token` cookies. |
+| `GET` | `/api/v1/auth/me/` | Authenticated | Retrieve authenticated user profile, active roles, and metadata. |
+| `POST` | `/api/v1/auth/refresh/` | Public (Throttled) | Rotate refresh token and set fresh access token cookie. |
+| `POST` | `/api/v1/auth/password/change/` | Authenticated | Change password verifying current password and enforcing complexity. |
+| `POST` | `/api/v1/auth/password/reset/request/` | Public (Throttled) | Request single-use password reset link; generic privacy response. |
+| `POST` | `/api/v1/auth/password/reset/confirm/` | Public (Throttled) | Complete password reset using verified uidb64 and token. |
+| `GET` | `/api/v1/auth/roles/` | Authenticated | List all active operational roles. |
+| `GET` | `/api/v1/auth/users/` | Admin (`ADMIN`) | List paginated user accounts across the enterprise. |
+| `POST` | `/api/v1/auth/users/` | Admin (`ADMIN`) | Provision a new user account with initial role assignments. |
+| `PATCH` | `/api/v1/auth/users/{id}/status/` | Admin (`ADMIN`) | Activate or deactivate user account with self-deactivation prevention. |
+| `POST` | `/api/v1/auth/users/{id}/roles/` | Admin (`ADMIN`) | Atomically assign or revoke operational roles for a user. |
+

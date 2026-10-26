@@ -71,6 +71,7 @@ lerna-debug.log*
 frontend/dist/
 dist/
 .vite/
+*.tsbuildinfo
 
 # Testing & Coverage
 coverage/

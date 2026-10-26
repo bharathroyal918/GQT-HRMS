@@ -31,3 +31,20 @@ In `backend/config/settings/production.py`:
 2. Stored in thread-local context for log messages: `[req:UUID]`.
 3. Injected into all outbound response headers as `X-Correlation-ID`.
 4. Attached to standardized JSON error responses for rapid support debugging.
+
+---
+
+## 5. Identity, Authentication & RBAC Architecture (Phase 1)
+* **Custom User Model:** Primary key is cryptographically random UUIDv4; email is normalized (lowercased, stripped) with database-level uniqueness constraint (`Lower('email')`).
+* **Cryptographic Password Hashing:** Production utilizes `Argon2id` as the primary hasher with `PBKDF2` fallback.
+* **Dual-Transport JWT Authentication:**
+  * First-party web frontend communicates exclusively via secure `HttpOnly`, `SameSite=Lax` cookies (`gqt_access_token` with 15m lifetime and `gqt_refresh_token` with 7d lifetime). Zero tokens or credentials are stored in localStorage or sessionStorage.
+  * Programmatic API clients can supply `Authorization: Bearer <token>`.
+* **Refresh Token Rotation & Replay Prevention:** `rest_framework_simplejwt.token_blacklist` rotates refresh tokens on every refresh call and blacklists used tokens immediately. Replay of spent tokens triggers rejection and security alerts.
+* **CSRF & Origin Protection:** Mutating requests require valid `X-CSRFToken` header matching the `gqt_csrftoken` cookie.
+* **Brute-Force & Enumeration Defense:**
+  * Login and password recovery endpoints are rate-limited (`AuthRateThrottle`: 10 req/min).
+  * Login returns generic `Invalid email or password.` errors for nonexistent users and invalid passwords.
+  * Password reset returns identical generic confirmations regardless of whether the email address exists.
+* **Immutable Security Event Audit Trail:** Every authentication event (`LOGIN_SUCCESS`, `LOGIN_FAILED`, `LOGOUT`, `PASSWORD_CHANGED`, `PASSWORD_RESET_REQUESTED`, `PASSWORD_RESET_COMPLETED`, `ROLES_UPDATED`, `ACCOUNT_STATUS_CHANGED`, `ADMIN_BOOTSTRAPPED`) is recorded into `core_audit_log` with remote IP, correlation ID, and zero password/token disclosure.
+* **Role-Based & Object-Level Authorization:** Governed by `docs/security/role_permission_matrix.md` with deny-by-default endpoints and server-side object ownership verification.
