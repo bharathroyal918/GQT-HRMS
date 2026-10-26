@@ -80,7 +80,7 @@ Pop-Location
 
 Write-Host '`n==========================================================' -ForegroundColor Cyan
 if ($TotalFailures -eq 0) {
-    Write-Host ' ALL CHECKS PASSED: GQT HRMS Phase 3 Verified and Ready for Phase 4!' -ForegroundColor Green
+    Write-Host ' ALL CHECKS PASSED: GQT HRMS Phase 4 (Creative Studio & Promotional Assets Management) Verified and Ready for Phase 5!' -ForegroundColor Green
 } else {
     Write-Host " VERIFICATION FAILED: $TotalFailures check(s) did not pass." -ForegroundColor Red
 }

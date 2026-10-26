@@ -31,6 +31,9 @@ urlpatterns = [
                 # Job Requirements & Verification Checklist (Phase 3)
                 path("jobs/", include("apps.jobs.urls")),
 
+                # Creative Studio & Promotional Assets (Phase 4)
+                path("creatives/", include("apps.creatives.urls")),
+
                 # OpenAPI 3.1 Documentation
                 path("schema/", SpectacularAPIView.as_view(), name="schema"),
                 path(

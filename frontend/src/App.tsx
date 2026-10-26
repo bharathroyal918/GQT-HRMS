@@ -25,9 +25,15 @@ import { JobDirectoryPage } from './pages/jobs/JobDirectoryPage';
 import { JobFormPage } from './pages/jobs/JobFormPage';
 import { JobDetailPage } from './pages/jobs/JobDetailPage';
 import { JobApprovalsQueuePage } from './pages/jobs/JobApprovalsQueuePage';
+import { CreativeDirectoryPage } from './pages/creatives/CreativeDirectoryPage';
+import { CreativeRequestFormPage } from './pages/creatives/CreativeRequestFormPage';
+import { CreativeDetailPage } from './pages/creatives/CreativeDetailPage';
+import { CreativeReviewQueuePage } from './pages/creatives/CreativeReviewQueuePage';
+import { DesignerWorkQueuePage } from './pages/creatives/DesignerWorkQueuePage';
 
 const CRM_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'AUDITOR'];
 const JOB_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'CREATIVE_DESIGNER', 'AUDITOR'];
+const CREATIVE_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'CREATIVE_DESIGNER', 'AUDITOR'];
 
 export const App: React.FC = () => {
   return (
@@ -173,6 +179,48 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute requiredRoles={['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'AUDITOR']}>
                     <JobApprovalsQueuePage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Creative Studio & Promotional Assets Management (Phase 4 / Steps 8-9) */}
+              <Route
+                path="creatives"
+                element={
+                  <ProtectedRoute requiredRoles={CREATIVE_ROLES}>
+                    <CreativeDirectoryPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="creatives/new"
+                element={
+                  <ProtectedRoute requiredRoles={['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER']}>
+                    <CreativeRequestFormPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="creatives/queue"
+                element={
+                  <ProtectedRoute requiredRoles={['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'AUDITOR']}>
+                    <CreativeReviewQueuePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="creatives/my-tasks"
+                element={
+                  <ProtectedRoute requiredRoles={['CREATIVE_DESIGNER', 'ADMIN']}>
+                    <DesignerWorkQueuePage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="creatives/:id"
+                element={
+                  <ProtectedRoute requiredRoles={CREATIVE_ROLES}>
+                    <CreativeDetailPage />
                   </ProtectedRoute>
                 }
               />

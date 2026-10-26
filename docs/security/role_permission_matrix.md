@@ -105,7 +105,15 @@ To prevent broken object-level authorization (IDOR / BOLA):
 - **Auditor Role (`AUDITOR`):** Strictly restricted to `SAFE_METHODS` (`GET`, `HEAD`, `OPTIONS`). All mutating lifecycle operations return `403 Forbidden`.
 - **Downstream Read-Only Roles:** `HR_RELATIONSHIP_MGR` and `CREATIVE_DESIGNER` hold read-only access to Job Requirements for downstream collaboration.
 - **Denied Roles (`STUDENT`, `TRAINER`, `EVALUATOR`):** Zero access to Job Intake endpoints (`403 Forbidden`). Students access job notices only after Step 10 official student publication.
-- **Post-Approval Immutability:** Once approved, direct editing of job requirements is blocked (`is_editable=False`). Material modifications require explicit reopening by the Placement Head.
+### 4.3. Phase 4 Confirmed Creative Studio & Promotional Assets Permissions (Implemented & Verified)
+- **Creative Studio Operational Roles:** `ADMIN`, `PLACEMENT_HEAD`, and `PLACEMENT_OFFICER` hold complete operational privileges to create creative requests, assign graphic designers, and update creative briefs.
+- **Graphic Designer Role (`CREATIVE_DESIGNER`):** Can view requests assigned to them (or unassigned queue), upload new promotional asset versions, provide designer release notes, and track revision feedback. Cannot create requests, assign other designers, verify checklist items, or sign off on designs.
+- **4-Point Checklist Auditing (`CanVerifyCreativeChecklist`):** Restricted strictly to `ADMIN`, `PLACEMENT_HEAD`, and `PLACEMENT_OFFICER`. Mutating checklist item status (`VERIFIED`, `REJECTED`, `WAIVED`) and recording audit remarks is enforced via service-level atomic transactions.
+- **Step 9 Final Sign-Off Gate (`CanApproveCreative`):** Restricted strictly to `ADMIN` and `PLACEMENT_HEAD`. Final design approval (`POST /versions/{id}/approve/`) and rejection (`POST /versions/{id}/reject/`) are strictly blocked for `PLACEMENT_OFFICER` and `CREATIVE_DESIGNER` (`403 Forbidden: Only Placement Head or Admin can execute final design sign-off`).
+- **4-Point Checklist Completeness Gating:** Even for `ADMIN` or `PLACEMENT_HEAD`, approval transitions fail with `400 Bad Request` unless all 4 mandatory checklist criteria (`FLYER_ACCURACY`, `OFFICIAL_LOGO`, `QR_CODE`, `REGISTRATION_LINK_AND_CONTACTS`) are marked `VERIFIED`.
+- **Auditor Role (`AUDITOR`):** Strictly restricted to `SAFE_METHODS` (`GET`, `HEAD`, `OPTIONS`). All mutating operations return `403 Forbidden`.
+- **Denied Roles (`STUDENT`, `TRAINER`, `EVALUATOR`, `HR_RELATIONSHIP_MGR`):** Zero access to creative studio production and approval endpoints (`403 Forbidden`).
+- **Post-Approval Immutability:** Once approved, an asset version is immutable (`is_locked=True`). Revisions require uploading a new version with an incremented version number, which automatically resets the checklist and requires complete re-verification.
 
 ---
 

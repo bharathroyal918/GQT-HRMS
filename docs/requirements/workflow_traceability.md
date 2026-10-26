@@ -69,12 +69,14 @@
   * *Gating Rule:* All 5 mandatory checklist criteria must evaluate to `VERIFIED` before approval can proceed. Premature approval attempts are rejected with `400 Bad Request`. Non-authorized roles receive `403 Forbidden`. Reopening requires explicit business justification and clears previous approval timestamps.  
   * *Status:* ✅ Implemented & verified.
 * **Step 8: Send to Design Team**  
-  * *Business Requirement:* Trigger creative asset requests (Flyer, Banner, Social Post) and assign graphic designer.  
-  * *Required Entity:* `CreativeRequest(job_requirement, creative_type, assigned_designer)`.
+  * *Business Requirement:* Trigger creative asset requests (Flyer, Banner, Social Post, Combined Pack) from approved job requirements and assign graphic designer.  
+  * *Required Entity:* `apps.creatives.models.CreativeRequest`.
+  * *Status:* ✅ Implemented & verified (Phase 4).
 * **Step 9: Review & Approve Design**  
-  * *Business Requirement:* Designer submits draft; reviewer validates 4-point design checklist (flyer, logo, QR code, registration link).  
-  * *Required Entity:* `CreativeDraftVersion`, `CreativeReviewChecklist`.  
-  * *Security Rule:* Uploaded files validated with binary magic bytes; SVG rejected (XSS defense).
+  * *Business Requirement:* Designer submits asset revision; reviewer validates authoritative 4-point design verification checklist (Flyer accuracy, Official logo, QR code, Registration link/contacts). Final sign-off restricted to Placement Head.  
+  * *Required Entity:* `apps.creatives.models.CreativeAssetVersion`, `apps.creatives.models.CreativeChecklistItem`, `apps.creatives.models.CreativeDecision`.  
+  * *Security Rule:* Uploaded files validated with binary magic bytes; SVG rejected (XSS defense); monotonic version numbering; authenticated streaming delivery.
+  * *Status:* ✅ Implemented & verified (Phase 4).
 
 ### Phase 3: Student Registration (Steps 10–14)
 * **Step 10: Publish Job Notification**  

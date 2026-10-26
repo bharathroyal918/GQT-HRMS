@@ -14,6 +14,8 @@ import {
   Calendar,
   Briefcase,
   FileCheck,
+  Palette,
+  Sparkles,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -37,6 +39,14 @@ export const Navbar: React.FC = () => {
     'AUDITOR',
   ]);
 
+  const canAccessCreatives = hasAnyRole([
+    'ADMIN',
+    'PLACEMENT_HEAD',
+    'PLACEMENT_OFFICER',
+    'CREATIVE_DESIGNER',
+    'AUDITOR',
+  ]);
+
   const navLinks = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     ...(canAccessCRM
@@ -52,6 +62,17 @@ export const Navbar: React.FC = () => {
       ? [
           { name: 'Job Requirements', href: '/jobs', icon: Briefcase },
           { name: 'Review & Approvals', href: '/jobs/approvals', icon: FileCheck },
+        ]
+      : []),
+    ...(canAccessCreatives
+      ? [
+          { name: 'Creative Studio', href: '/creatives', icon: Palette },
+          ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER'])
+            ? [{ name: 'Creative Reviews', href: '/creatives/queue', icon: Sparkles }]
+            : []),
+          ...(hasRole('CREATIVE_DESIGNER')
+            ? [{ name: 'My Tasks', href: '/creatives/my-tasks', icon: Sparkles }]
+            : []),
         ]
       : []),
     ...(hasRole('ADMIN') ? [{ name: 'Diagnostics', href: '/diagnostics', icon: Activity }] : []),

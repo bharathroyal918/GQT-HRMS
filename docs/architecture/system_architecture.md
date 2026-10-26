@@ -136,3 +136,34 @@ Every business domain follows a strict 5-layer separation of concerns:
   * `@transaction.atomic` mutations with optimistic and pessimistic locking.
   * Separation of duties: Placement Officers verify checklist items; only Placement Head or Admin can sign off on final approval.
   * Strict gate: `all_mandatory_verified` check prevents approval when any mandatory item is pending or rejected.
+
+---
+
+## 7. Creative Studio & Promotional Assets Domain (`apps.creatives`)
+* **Creative Request Model (`creatives_request`):**
+  * `id`: UUIDv4 primary key.
+  * Relational integrity: Foreign key to `jobs.JobRequirement` with `on_delete=models.PROTECT`. Service layer validates `job.status == 'APPROVED'` before request creation.
+  * Supported Deliverable Formats: `FLYER`, `BANNER`, `SOCIAL_POST`, `COMBINED_PACK`.
+  * Campaign metadata: `title`, `brief`, `target_audience`, `registration_url`, `qr_code_target_url`, `contact_email`, `contact_phone`, `priority`, `production_deadline`.
+  * Unique constraint: `UniqueConstraint(fields=['job_requirement', 'deliverable_type'])` for active non-cancelled requests.
+  * Assigned Graphic Designer: Foreign key to `accounts.User` validated to hold `CREATIVE_DESIGNER` or `ADMIN` role.
+* **Monotonic Asset Versions (`creatives_asset_version`):**
+  * Relational integrity: Foreign key to `CreativeRequest` with `on_delete=models.CASCADE`.
+  * Monotonic versioning: Auto-incrementing positive integer (`version_number = 1, 2, ...`). Historical revisions are immutably preserved.
+  * File security & metadata: Validated binary magic bytes (PNG, JPEG, WEBP, PDF), pure-Python pixel dimension extraction, SHA-256 cryptographic digest, sanitized storage filenames.
+  * Active markup defense: SVGs (`image/svg+xml`, `.svg`, `<?xml`, `<svg`, `<script`) are rejected outright to prevent Stored XSS.
+* **Authoritative 4-Point Design Verification Checklist (`creatives_checklist_item`):**
+  * Initialized automatically upon upload of each asset version:
+    1. `FLYER_ACCURACY`: Flyer content, role title, eligibility, package, drive date, venue match approved JD.
+    2. `OFFICIAL_LOGO`: High-resolution official employer logo and GQT institutional brand guidelines followed.
+    3. `QR_CODE`: Scannable, high-contrast QR code resolving to verified registration URL.
+    4. `REGISTRATION_LINK_AND_CONTACTS`: Legible text URL, deadline, and placement cell contact details.
+  * Audit fields: `status` (`PENDING`, `VERIFIED`, `REJECTED`, `WAIVED`), `verified_by`, `verified_at`, `remarks`.
+  * Composite uniqueness: `UniqueConstraint(fields=['version', 'item_code'])`.
+* **Step 9 Final Sign-Off Gate:**
+  * Restricted strictly to `PLACEMENT_HEAD` or `ADMIN`.
+  * Enforces `all_mandatory_verified == True`. Rejects premature sign-off attempts with `400 Bad Request`.
+  * Approved versions and requests become locked and immutable (`is_approved = True`, `is_locked = True`).
+* **Decision Audit Log (`creatives_decision`):**
+  * Append-only decision record: `creative_request_id`, `actor_id`, `action` (`CREATED`, `ASSIGNED`, `SUBMITTED`, `CHANGES_REQUESTED`, `APPROVED`, `REJECTED`, `REOPENED`), `version_number`, `notes`, `created_at`.
+

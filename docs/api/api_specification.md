@@ -170,3 +170,37 @@ All error responses (400, 401, 403, 404, 500) follow a standardized format:
 | `GET` | `/api/v1/jobs/requirements/pending-verification/` | Job Verifier / Head | Operational queue of jobs awaiting checklist verification. |
 | `GET` | `/api/v1/jobs/requirements/pending-approval/` | Admin / Head | Operational queue of verified jobs awaiting Placement Head sign-off. |
 | `GET` | `/api/v1/jobs/requirements/metrics/` | Staff / Auditor | Dashboard aggregations for active, pending, verified, approved jobs, and upcoming deadlines. |
+
+---
+
+## 7. Phase 4: Creative Studio & Promotional Assets Endpoints (Steps 8–9)
+
+### 7.1 Creative Requests & Briefs (Workflow Step 8)
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/api/v1/creatives/requests/` | Staff / Auditor | List and search creative requests with multi-facet filtering. |
+| `POST` | `/api/v1/creatives/requests/` | Creative Staff | Create production brief from approved job requirement (`status=APPROVED`). |
+| `GET` | `/api/v1/creatives/requests/{id}/` | Staff / Auditor | Retrieve request detail with nested versions, active 4-point checklist, and decisions. |
+| `PATCH` | `/api/v1/creatives/requests/{id}/` | Creative Staff | Update brief copy, audience, URLs, contact info, and production deadlines. |
+| `POST` | `/api/v1/creatives/requests/{id}/assign/` | Creative Staff | Assign or reassign Graphic Designer; transitions state to `ASSIGNED`. |
+| `POST` | `/api/v1/creatives/requests/{id}/archive/` | Admin / Head | Soft-archive creative request. |
+| `POST` | `/api/v1/creatives/requests/{id}/restore/` | Admin / Head | Restore soft-archived creative request. |
+
+### 7.2 Promotional Asset Versions & Uploads (Workflow Step 9)
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :---: | :--- |
+| `POST` | `/api/v1/creatives/requests/{id}/versions/` | Designer / Staff | Multipart upload (`file`, `designer_notes`). Enforces binary magic bytes (PNG, JPEG, WEBP, PDF), 10MB limit, SVG rejection, monotonic versioning, and auto-initializes 4 checklist items. Advances state to `REVIEW_PENDING`. |
+| `GET` | `/api/v1/creatives/requests/{id}/versions/{version_id}/` | Staff / Auditor | Retrieve version detail with SHA-256 fingerprint, dimensions, and checklist status. |
+| `GET` | `/api/v1/creatives/requests/{id}/versions/{version_id}/file/` | Staff / Auditor | Authenticated streaming binary file download via `FileResponse`. Raw private filesystem paths are never exposed. |
+
+### 7.3 4-Point Design Verification & Placement Head Sign-Off Gate (Workflow Step 9 Gate)
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :---: | :--- |
+| `POST` | `/api/v1/creatives/requests/{id}/versions/{version_id}/checklist/{code}/verify/` | Creative Verifier | Audit checklist criterion (`FLYER_ACCURACY`, `OFFICIAL_LOGO`, `QR_CODE`, `REGISTRATION_LINK_AND_CONTACTS`) with status (`VERIFIED`, `REJECTED`, `WAIVED`) and remarks. Advances to `IN_REVIEW`. |
+| `POST` | `/api/v1/creatives/requests/{id}/versions/{version_id}/return-correction/` | Creative Verifier | Return asset to designer (`CHANGES_REQUESTED`) with mandatory feedback notes. |
+| `POST` | `/api/v1/creatives/requests/{id}/versions/{version_id}/approve/` | **Placement Head / Admin strictly** | Final institutional sign-off gate. Unlocks ONLY when all 4 checklist criteria evaluate to `VERIFIED`. Locks version and request as `APPROVED`. |
+| `POST` | `/api/v1/creatives/requests/{id}/versions/{version_id}/reject/` | **Placement Head / Admin strictly** | Formally reject asset version with mandatory justification. |
+| `GET` | `/api/v1/creatives/requests/pending-review/` | Staff / Auditor | Dual review queue (Checklist Audits vs Placement Head Sign-Offs). |
+| `GET` | `/api/v1/creatives/requests/designer-queue/` | Graphic Designer / Admin | Workbench of creative deliverables assigned to current designer. |
+| `GET` | `/api/v1/creatives/requests/metrics/` | Staff / Auditor | Studio KPIs: active, in production, review pending, approved, urgent deadlines. |
+

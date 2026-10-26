@@ -1,6 +1,6 @@
 # GQT HRMS & Recruitment CRM Platform
 
-> **Status:** Phase 3 (Job Intake & 5-Point Verification Checklist) Complete & Verified  
+> **Status:** Phase 4 (Creative Studio & Promotional Assets Management — Steps 8–9) Complete & Verified  
 > **Source of Truth:** `docs/requirements/workflow_traceability.md` (13 Business Phases, 41 Operational Steps, 19 CRM Modules, 8 AI Capabilities)  
 > **Role & Permission Matrix:** `docs/security/role_permission_matrix.md` (9 Operational Roles, Deny-by-Default, Object-Level Ownership)  
 > **Target Database:** Supabase-hosted PostgreSQL 16 Engine with SSL  
@@ -18,9 +18,10 @@
 | **Identity & Auth** | Argon2id, SimpleJWT Blacklist, HttpOnly Cookies | Dual-transport JWT (SameSite Lax HttpOnly cookies + Bearer header fallback), Token family rotation & replay detection, Rate-limited login (10 req/min) |
 | **CRM Subsystem** | Corporate Directory, HR Contacts, Outreach, Tasks | `apps.crm` module with dynamic overdue evaluation, 100+ outreach/day target tracking, duplicate candidate detection, and audit trail logging |
 | **Job Intake Subsystem** | Requirements, 5-Point Verification Checklist, Head Sign-off | `apps.jobs` module with relational checklist entities, gated Placement Head approval, draft immutability post-approval, and operational queues |
+| **Creative Studio Subsystem** | Promotional Assets, 4-Point Checklist, Versioning, Sign-off | `apps.creatives` module with monotonic versioning, SVG/magic bytes file security, 4-point design verification checklist, and gated Placement Head sign-off |
 | **Database** | Supabase PostgreSQL 16 via `psycopg` (v3) | SSL connection (`sslmode=require`), UUIDv4 primary keys, normalized case-insensitive email uniqueness, transactional operations |
 | **Security** | Argon2id, Fail-Closed Config, Log Redaction | Server-side validation, `SensitiveDataFilter` redacting secrets in logs, request correlation IDs (`X-Correlation-ID`) |
-| **Testing** | pytest-django, Vitest | 86 backend unit/integration tests, 23 frontend component/route tests (109 total automated tests), strict TypeScript checks |
+| **Testing** | pytest-django, Vitest | 111 backend unit/integration tests, 29 frontend component/route tests (140 total automated tests), strict TypeScript checks |
 
 
 
@@ -100,6 +101,8 @@ If an administrator loses access:
   * CRM Outreach Logs: `http://localhost:8000/api/v1/crm/outreach/`
   * CRM Follow-ups: `http://localhost:8000/api/v1/crm/follow-ups/`
   * CRM Dashboard Metrics: `http://localhost:8000/api/v1/crm/dashboard/metrics/`
+  * Job Requirements: `http://localhost:8000/api/v1/jobs/requirements/`
+  * Creative Requests: `http://localhost:8000/api/v1/creatives/requests/`
   * OpenAPI Swagger UI: `http://localhost:8000/api/v1/schema/swagger/`
   * OpenAPI Redoc UI: `http://localhost:8000/api/v1/schema/redoc/`
 
@@ -117,6 +120,13 @@ If an administrator loses access:
   * Outreach Activity Feed: `http://localhost:5173/crm/outreach`
   * Log Outreach Activity: `http://localhost:5173/crm/outreach/new`
   * Follow-up Workspace: `http://localhost:5173/crm/follow-ups`
+  * Job Requirements Directory: `http://localhost:5173/jobs`
+  * Job Intake Form (Step 5): `http://localhost:5173/jobs/new`
+  * Job Approvals Queue: `http://localhost:5173/jobs/approvals`
+  * Creative Studio Directory (Step 8): `http://localhost:5173/creatives`
+  * Creative Request Intake: `http://localhost:5173/creatives/new`
+  * Creative Review Queues (Step 9): `http://localhost:5173/creatives/queue`
+  * Graphic Designer Workbench: `http://localhost:5173/creatives/my-tasks`
   * System Diagnostics (Admin only): `http://localhost:5173/diagnostics`
 
 ---
@@ -131,10 +141,10 @@ powershell -ExecutionPolicy Bypass -File scripts\verify_dev.ps1
 Verification includes:
 1. `manage.py check` &rarr; Django system checks (0 issues)
 2. `manage.py makemigrations --check --dry-run` &rarr; 0 schema drift
-3. `pytest` &rarr; **61/61 automated backend tests pass (26 CRM + 35 Auth/Core)**
+3. `pytest` &rarr; **111/111 automated backend tests pass (25 Creatives + 25 Jobs + 26 CRM + 35 Auth/Core)**
 4. `tsc -b --noEmit` &rarr; Strict TypeScript compilation clean
-5. `vitest run` &rarr; **19/19 frontend component & route tests pass (5 CRM + 14 Auth/Core)**
-6. `npm run build` &rarr; Vite production build passes in `dist/` with 0 secret leaks
+5. `vitest run` &rarr; **29/29 frontend component & route tests pass across 7 test suites**
+6. `npm run build` &rarr; Vite production build passes in `dist/` (1752 modules bundled) with 0 secret leaks
 
 ---
 
@@ -169,28 +179,38 @@ gqt-hrms/
 │   │   │   ├── services.py        # Atomic business logic & audit logging
 │   │   │   ├── urls.py            # /api/v1/crm/ routes
 │   │   │   └── views.py           # ViewSets for companies, contacts, outreach, tasks, dashboard
-│   │   └── jobs/                  # Job Intake & Verification module (Phase 3)
-│   │       ├── migrations/        # 0001_initial (JobRequirement, JobChecklistItem, JobApprovalDecision)
-│   │       ├── models.py          # Relational entities, 5-point checklist specs, lifecycle status
-│   │       ├── permissions.py     # IsJobStaffOrAuditor, CanVerifyJobChecklist, CanApproveJobRequirement
-│   │       ├── selectors.py       # Query engine, queues, & metrics aggregations
-│   │       ├── serializers.py     # DRF serializers with validation & nested checklist schemas
-│   │       ├── services.py        # Atomic lifecycle transitions & approval gating
-│   │       ├── urls.py            # /api/v1/jobs/ routes
-│   │       └── views.py           # JobRequirementViewSet with verification & approval actions
+│   │   ├── jobs/                  # Job Intake & Verification module (Phase 3)
+│   │   │   ├── migrations/        # 0001_initial (JobRequirement, JobChecklistItem, JobApprovalDecision)
+│   │   │   ├── models.py          # Relational entities, 5-point checklist specs, lifecycle status
+│   │   │   ├── permissions.py     # IsJobStaffOrAuditor, CanVerifyJobChecklist, CanApproveJobRequirement
+│   │   │   ├── selectors.py       # Query engine, queues, & metrics aggregations
+│   │   │   ├── serializers.py     # DRF serializers with validation & nested checklist schemas
+│   │   │   ├── services.py        # Atomic lifecycle transitions & approval gating
+│   │   │   ├── urls.py            # /api/v1/jobs/ routes
+│   │   │   └── views.py           # JobRequirementViewSet with verification & approval actions
+│   │   └── creatives/             # Creative Studio & Promotional Assets module (Phase 4 / Steps 8-9)
+│   │       ├── migrations/        # 0001_initial (CreativeRequest, AssetVersion, ChecklistItem, Decision)
+│   │       ├── models.py          # Relational models, 4-point design checklist, priority, deliverable types
+│   │       ├── permissions.py     # IsCreativeStaffOrAuditor, CanAssignDesigner, CanApproveCreative
+│   │       ├── selectors.py       # Query engine, designer queues, review queues, metrics
+│   │       ├── serializers.py     # DRF serializers with version history & nested audit items
+│   │       ├── services.py        # Request lifecycle, upload with magic bytes, checklist verification, Head approval
+│   │       ├── urls.py            # /api/v1/creatives/ routes
+│   │       ├── validators.py      # Binary magic bytes, pure-Python dimensions, SHA-256, SVG rejection
+│   │       └── views.py           # CreativeRequestViewSet with authenticated streaming download action
 │   ├── config/                    # Django configuration package
 │   │   ├── asgi.py                # ASGI entrypoint
 │   │   ├── urls.py                # Root URLs (/api/v1/ and admin)
 │   │   ├── wsgi.py                # WSGI entrypoint
 │   │   └── settings/              # Base, local, test, and production settings
-│   ├── tests/                     # Automated pytest test suites (86 tests)
+│   ├── tests/                     # Automated pytest test suites (111 tests)
 │   ├── manage.py                  # Django CLI management utility
 │   ├── pytest.ini                 # Pytest runner configuration
 │   └── requirements.txt           # Pinned backend dependencies
 ├── frontend/                      # React 19 TypeScript Vite frontend
 │   ├── public/                    # Static brand assets (official GQT logos)
 │   ├── src/
-│   │   ├── api/                   # Typed API client (authApi.ts, crmApi.ts, jobsApi.ts)
+│   │   ├── api/                   # Typed API client (authApi.ts, crmApi.ts, jobsApi.ts, creativesApi.ts)
 │   │   ├── components/
 │   │   │   ├── auth/              # ProtectedRoute route guard
 │   │   │   ├── brand/             # Official GQT Logo & Emblem components
@@ -215,11 +235,17 @@ gqt-hrms/
 │   │   │   │   ├── JobFormPage.tsx           # Step 5 intake form with company/contact linkage
 │   │   │   │   ├── JobDetailPage.tsx         # 3-tab workspace: 5-point checklist, overview, decisions
 │   │   │   │   └── JobApprovalsQueuePage.tsx # Dual queues: checklist audits & Head approvals
+│   │   │   ├── creatives/         # Creative Studio & Promotional Assets workspace (Phase 4 / Steps 8-9)
+│   │   │   │   ├── CreativeDirectoryPage.tsx   # Deliverables directory with format badges & KPIs
+│   │   │   │   ├── CreativeRequestFormPage.tsx # Step 8 intake from approved jobs with copy brief
+│   │   │   │   ├── CreativeDetailPage.tsx      # Workspace: 4-point checklist, file download, Head approval
+│   │   │   │   ├── CreativeReviewQueuePage.tsx # Dual queues: checklist audits & Placement Head approvals
+│   │   │   │   └── DesignerWorkQueuePage.tsx   # Graphic designer assigned task workbench
 │   │   │   ├── DashboardPage.tsx  # Interactive CRM roadmap & system dashboard
 │   │   │   ├── DiagnosticsPage.tsx# Real-time infrastructure health inspector
 │   │   │   └── NotFoundPage.tsx   # 404 handler
-│   │   ├── test/                  # Vitest component & auth tests (23 tests)
-│   │   ├── types/                 # TypeScript interfaces (auth.ts, api.ts, crm.ts, jobs.ts)
+│   │   ├── test/                  # Vitest component & suite tests (29 tests across 7 test files)
+│   │   ├── types/                 # TypeScript interfaces (auth.ts, api.ts, crm.ts, jobs.ts, creatives.ts)
 │   │   ├── App.tsx                # React Router & QueryClient routing
 │   │   ├── index.css              # Tailwind CSS directives & scrollbar styles
 │   │   └── main.tsx               # Application root entry
@@ -241,6 +267,10 @@ gqt-hrms/
 │   │   ├── job_intake_data_model.md        # Job requirement, checklist, and decision schema
 │   │   ├── job_intake_business_rules.md    # 5-point checklist, lifecycle states, transitions
 │   │   └── job_intake_api.md               # Job intake REST API documentation
+│   ├── creatives/                 # Phase 4 Creative Studio documentation
+│   │   ├── creative_assets_data_model.md     # Relational assets, versions, 4-point checklist schema
+│   │   ├── creative_assets_business_rules.md # 4-point checklist, magic bytes security, gate rules
+│   │   └── creative_assets_api.md            # Creative Studio REST API documentation
 │   ├── deployment/                # Supabase PostgreSQL setup instructions
 │   └── testing/                   # QA and automated testing strategy
 └── scripts/                       # Automation scripts for Windows
@@ -252,14 +282,16 @@ gqt-hrms/
 
 ---
 
-## 7. Next Phase: Creative Studio & Promotional Assets
+## 7. Next Phase: Student Registration & Notice Broadcast
 
-Phase 3 (Job Intake & 5-Point Verification Checklist) is complete. The system is paused awaiting review before beginning:
-* **Phase 4: Creative Studio & Promotional Assets (`apps.creatives` — Steps 8–9)**
-  * Graphic Designer creative request dispatch from approved JDs.
-  * Marketing flyers, banners, social media posts, and QR codes.
-  * 4-Point design verification checklist.
-  * Placement Head creative sign-off gate before student notification.
+Phase 4 (Creative Studio & Promotional Assets Management — Steps 8–9) is complete and verified. The system is paused awaiting review before beginning:
+* **Phase 5: Student Registration & Eligibility Engine (`apps.students` — Steps 10–14)**
+  * Step 10: Publish Job Notification & broadcast channels (WhatsApp, Email, Portal).
+  * Step 11: Student registration & academic profile collection.
+  * Step 12: Student resume ingestion with binary magic bytes validation (`%PDF-`).
+  * Step 13: Multi-factor eligibility rule verification engine.
+  * Step 14: Eligible candidate cohort finalization & Placement Officer manual override audit.
+
 
 
 
