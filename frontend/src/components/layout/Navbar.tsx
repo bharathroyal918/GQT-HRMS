@@ -12,6 +12,8 @@ import {
   Users,
   PhoneCall,
   Calendar,
+  Briefcase,
+  FileCheck,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -26,6 +28,15 @@ export const Navbar: React.FC = () => {
     'AUDITOR',
   ]);
 
+  const canAccessJobs = hasAnyRole([
+    'ADMIN',
+    'PLACEMENT_HEAD',
+    'PLACEMENT_OFFICER',
+    'HR_RELATIONSHIP_MGR',
+    'CREATIVE_DESIGNER',
+    'AUDITOR',
+  ]);
+
   const navLinks = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     ...(canAccessCRM
@@ -35,6 +46,12 @@ export const Navbar: React.FC = () => {
           { name: 'Contacts', href: '/crm/contacts', icon: Users },
           { name: 'Outreach', href: '/crm/outreach', icon: PhoneCall },
           { name: 'Follow-ups', href: '/crm/follow-ups', icon: Calendar },
+        ]
+      : []),
+    ...(canAccessJobs
+      ? [
+          { name: 'Job Requirements', href: '/jobs', icon: Briefcase },
+          { name: 'Review & Approvals', href: '/jobs/approvals', icon: FileCheck },
         ]
       : []),
     ...(hasRole('ADMIN') ? [{ name: 'Diagnostics', href: '/diagnostics', icon: Activity }] : []),

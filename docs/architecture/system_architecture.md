@@ -111,3 +111,28 @@ Every business domain follows a strict 5-layer separation of concerns:
   * System-wide configurable daily target (default: 100+ outreach/day) managed via `crm_configuration`.
   * Permission-aware metrics calculation aggregated across timezones for today's outreach, channel distributions, overdue follow-ups, and active partner counts.
 
+---
+
+## 6. Job Intake & Verification Domain (`apps.jobs`)
+* **Job Requirement Model (`jobs_job_requirement`):**
+  * `id`: UUIDv4 primary key.
+  * Relational integrity: Foreign key to `crm.Company` with `on_delete=models.PROTECT`; optional foreign key to `crm.HRContact` with `on_delete=models.SET_NULL`. Service layer validates that contact belongs to the associated company.
+  * 10 structured Step 5 fields: `title`, `description`, `skills_required`, `min_salary`/`max_salary`/`salary_negotiable`, `location`, `bond_details`, `eligibility_criteria`, `hiring_process_rounds`, `interview_date`, `registration_deadline`.
+  * Explicit 7-stage lifecycle status: `DRAFT`, `PENDING_VERIFICATION`, `UNDER_REVIEW`, `CHANGES_REQUESTED`, `VERIFIED`, `APPROVED`, `REJECTED`.
+  * Locking mechanism: `is_locked` / `is_editable` properties; approved JDs cannot be mutated without Placement Head reopening.
+* **Checklist Entity Model (`jobs_checklist_item`):**
+  * Relational normalization: Foreign key to `JobRequirement` with `on_delete=models.CASCADE`.
+  * 5 workflow-derived verification points:
+    1. `ELIGIBILITY`: Academic eligibility, backlogs, percentage/CGPA criteria.
+    2. `SALARY_AUTHENTICITY`: CTC authenticity, stipends, deductions, bonds.
+    3. `COMPANY_AUTHENTICITY`: Corporate credibility, registration, blacklist status.
+    4. `INTERVIEW_PROCESS`: Rounds, mode, venue, assessment platforms.
+    5. `REGISTRATION_DEADLINE`: Valid date before drive day allowing student prep.
+  * Verification metadata: `status` (`PENDING`, `VERIFIED`, `REJECTED`, `NOT_APPLICABLE`), `verified_by`, `verified_at`, `remarks`.
+  * Composite uniqueness: `UniqueConstraint(fields=['job_requirement', 'item_code'])`.
+* **Decision Audit Log (`jobs_approval_decision`):**
+  * Append-only decision record: `job_requirement_id`, `actor_id`, `decision` (`SUBMITTED`, `CHANGES_REQUESTED`, `APPROVED`, `REJECTED`, `REOPENED`), `reason`, `snapshot_status`, `created_at`.
+* **State Machine & Atomic Services:**
+  * `@transaction.atomic` mutations with optimistic and pessimistic locking.
+  * Separation of duties: Placement Officers verify checklist items; only Placement Head or Admin can sign off on final approval.
+  * Strict gate: `all_mandatory_verified` check prevents approval when any mandatory item is pending or rejected.

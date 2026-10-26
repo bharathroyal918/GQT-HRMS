@@ -21,8 +21,13 @@ import { ContactFormPage } from './pages/crm/ContactFormPage';
 import { OutreachPage } from './pages/crm/OutreachPage';
 import { OutreachFormPage } from './pages/crm/OutreachFormPage';
 import { FollowUpsPage } from './pages/crm/FollowUpsPage';
+import { JobDirectoryPage } from './pages/jobs/JobDirectoryPage';
+import { JobFormPage } from './pages/jobs/JobFormPage';
+import { JobDetailPage } from './pages/jobs/JobDetailPage';
+import { JobApprovalsQueuePage } from './pages/jobs/JobApprovalsQueuePage';
 
 const CRM_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'AUDITOR'];
+const JOB_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'CREATIVE_DESIGNER', 'AUDITOR'];
 
 export const App: React.FC = () => {
   return (
@@ -126,6 +131,48 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute requiredRoles={CRM_ROLES}>
                     <FollowUpsPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Job Requirements & Verification Checklist (Phase 3) */}
+              <Route
+                path="jobs"
+                element={
+                  <ProtectedRoute requiredRoles={JOB_ROLES}>
+                    <JobDirectoryPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="jobs/new"
+                element={
+                  <ProtectedRoute requiredRoles={['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER']}>
+                    <JobFormPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="jobs/:id"
+                element={
+                  <ProtectedRoute requiredRoles={JOB_ROLES}>
+                    <JobDetailPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="jobs/:id/edit"
+                element={
+                  <ProtectedRoute requiredRoles={['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER']}>
+                    <JobFormPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="jobs/approvals"
+                element={
+                  <ProtectedRoute requiredRoles={['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'AUDITOR']}>
+                    <JobApprovalsQueuePage />
                   </ProtectedRoute>
                 }
               />

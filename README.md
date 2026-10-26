@@ -1,6 +1,6 @@
 # GQT HRMS & Recruitment CRM Platform
 
-> **Status:** Phase 2 (Corporate CRM & HR Directory Management) Complete & Verified  
+> **Status:** Phase 3 (Job Intake & 5-Point Verification Checklist) Complete & Verified  
 > **Source of Truth:** `docs/requirements/workflow_traceability.md` (13 Business Phases, 41 Operational Steps, 19 CRM Modules, 8 AI Capabilities)  
 > **Role & Permission Matrix:** `docs/security/role_permission_matrix.md` (9 Operational Roles, Deny-by-Default, Object-Level Ownership)  
 > **Target Database:** Supabase-hosted PostgreSQL 16 Engine with SSL  
@@ -17,9 +17,11 @@
 | **Backend** | Python 3.14, Django 5.1.x, Django REST Framework | Strict 5-Layer Pattern (`Views` &rarr; `Serializers` &rarr; `Services` &rarr; `Selectors` &rarr; `Models`), Versioned API under `/api/v1/`, OpenAPI 3.1 via drf-spectacular |
 | **Identity & Auth** | Argon2id, SimpleJWT Blacklist, HttpOnly Cookies | Dual-transport JWT (SameSite Lax HttpOnly cookies + Bearer header fallback), Token family rotation & replay detection, Rate-limited login (10 req/min) |
 | **CRM Subsystem** | Corporate Directory, HR Contacts, Outreach, Tasks | `apps.crm` module with dynamic overdue evaluation, 100+ outreach/day target tracking, duplicate candidate detection, and audit trail logging |
+| **Job Intake Subsystem** | Requirements, 5-Point Verification Checklist, Head Sign-off | `apps.jobs` module with relational checklist entities, gated Placement Head approval, draft immutability post-approval, and operational queues |
 | **Database** | Supabase PostgreSQL 16 via `psycopg` (v3) | SSL connection (`sslmode=require`), UUIDv4 primary keys, normalized case-insensitive email uniqueness, transactional operations |
 | **Security** | Argon2id, Fail-Closed Config, Log Redaction | Server-side validation, `SensitiveDataFilter` redacting secrets in logs, request correlation IDs (`X-Correlation-ID`) |
-| **Testing** | pytest-django, Vitest | 61 backend unit/integration tests, 19 frontend component/route tests, strict TypeScript checks |
+| **Testing** | pytest-django, Vitest | 86 backend unit/integration tests, 23 frontend component/route tests (109 total automated tests), strict TypeScript checks |
+
 
 
 ---
@@ -158,28 +160,37 @@ gqt-hrms/
 │   │   │   ├── urls.py            # /api/v1/auth/ routing
 │   │   │   └── views.py           # LoginView, LogoutView, Me, Refresh, Admin viewset
 │   │   ├── core/                  # Core logging, middleware, health, and base models
-│   │   └── crm/                   # Corporate CRM & HR Directory module (Phase 2)
-│   │       ├── migrations/        # 0001_initial (Company, HRContact, OutreachLog, FollowUp)
-│   │       ├── models.py          # Relational entities & integrity constraints
-│   │       ├── permissions.py     # IsCRMStaffOrAuditor, IsCRMManagerOrAdmin
-│   │       ├── selectors.py       # Query engine, duplicate detection, & metrics aggregations
-│   │       ├── serializers.py     # DRF serializers with validation & nested schemas
-│   │       ├── services.py        # Atomic business logic & audit logging
-│   │       ├── urls.py            # /api/v1/crm/ routes
-│   │       └── views.py           # ViewSets for companies, contacts, outreach, tasks, dashboard
+│   │   ├── crm/                   # Corporate CRM & HR Directory module (Phase 2)
+│   │   │   ├── migrations/        # 0001_initial (Company, HRContact, OutreachLog, FollowUp)
+│   │   │   ├── models.py          # Relational entities & integrity constraints
+│   │   │   ├── permissions.py     # IsCRMStaffOrAuditor, IsCRMManagerOrAdmin
+│   │   │   ├── selectors.py       # Query engine, duplicate detection, & metrics aggregations
+│   │   │   ├── serializers.py     # DRF serializers with validation & nested schemas
+│   │   │   ├── services.py        # Atomic business logic & audit logging
+│   │   │   ├── urls.py            # /api/v1/crm/ routes
+│   │   │   └── views.py           # ViewSets for companies, contacts, outreach, tasks, dashboard
+│   │   └── jobs/                  # Job Intake & Verification module (Phase 3)
+│   │       ├── migrations/        # 0001_initial (JobRequirement, JobChecklistItem, JobApprovalDecision)
+│   │       ├── models.py          # Relational entities, 5-point checklist specs, lifecycle status
+│   │       ├── permissions.py     # IsJobStaffOrAuditor, CanVerifyJobChecklist, CanApproveJobRequirement
+│   │       ├── selectors.py       # Query engine, queues, & metrics aggregations
+│   │       ├── serializers.py     # DRF serializers with validation & nested checklist schemas
+│   │       ├── services.py        # Atomic lifecycle transitions & approval gating
+│   │       ├── urls.py            # /api/v1/jobs/ routes
+│   │       └── views.py           # JobRequirementViewSet with verification & approval actions
 │   ├── config/                    # Django configuration package
 │   │   ├── asgi.py                # ASGI entrypoint
 │   │   ├── urls.py                # Root URLs (/api/v1/ and admin)
 │   │   ├── wsgi.py                # WSGI entrypoint
 │   │   └── settings/              # Base, local, test, and production settings
-│   ├── tests/                     # Automated pytest test suites (61 tests)
+│   ├── tests/                     # Automated pytest test suites (86 tests)
 │   ├── manage.py                  # Django CLI management utility
 │   ├── pytest.ini                 # Pytest runner configuration
 │   └── requirements.txt           # Pinned backend dependencies
 ├── frontend/                      # React 19 TypeScript Vite frontend
 │   ├── public/                    # Static brand assets (official GQT logos)
 │   ├── src/
-│   │   ├── api/                   # Typed API client (authApi.ts, crmApi.ts)
+│   │   ├── api/                   # Typed API client (authApi.ts, crmApi.ts, jobsApi.ts)
 │   │   ├── components/
 │   │   │   ├── auth/              # ProtectedRoute route guard
 │   │   │   ├── brand/             # Official GQT Logo & Emblem components
@@ -199,11 +210,16 @@ gqt-hrms/
 │   │   │   │   ├── OutreachPage.tsx      # Outreach activity journal & filter view
 │   │   │   │   ├── OutreachFormPage.tsx  # Log new outreach touchpoint
 │   │   │   │   └── FollowUpsPage.tsx     # Follow-up workspace with reschedule/complete modals
+│   │   │   ├── jobs/              # Job Intake & Verification workspace (Phase 3)
+│   │   │   │   ├── JobDirectoryPage.tsx      # Opportunities directory with filters & progress bars
+│   │   │   │   ├── JobFormPage.tsx           # Step 5 intake form with company/contact linkage
+│   │   │   │   ├── JobDetailPage.tsx         # 3-tab workspace: 5-point checklist, overview, decisions
+│   │   │   │   └── JobApprovalsQueuePage.tsx # Dual queues: checklist audits & Head approvals
 │   │   │   ├── DashboardPage.tsx  # Interactive CRM roadmap & system dashboard
 │   │   │   ├── DiagnosticsPage.tsx# Real-time infrastructure health inspector
 │   │   │   └── NotFoundPage.tsx   # 404 handler
-│   │   ├── test/                  # Vitest component & auth tests (19 tests)
-│   │   ├── types/                 # TypeScript interfaces (auth.ts, api.ts, crm.ts)
+│   │   ├── test/                  # Vitest component & auth tests (23 tests)
+│   │   ├── types/                 # TypeScript interfaces (auth.ts, api.ts, crm.ts, jobs.ts)
 │   │   ├── App.tsx                # React Router & QueryClient routing
 │   │   ├── index.css              # Tailwind CSS directives & scrollbar styles
 │   │   └── main.tsx               # Application root entry
@@ -221,6 +237,10 @@ gqt-hrms/
 │   │   ├── corporate_crm_data_model.md     # CRM entity relationship design
 │   │   ├── corporate_crm_business_rules.md # Duplicate detection, follow-up rules, targets
 │   │   └── corporate_crm_api.md            # CRM endpoint specifications
+│   ├── jobs/                      # Phase 3 Job Intake documentation
+│   │   ├── job_intake_data_model.md        # Job requirement, checklist, and decision schema
+│   │   ├── job_intake_business_rules.md    # 5-point checklist, lifecycle states, transitions
+│   │   └── job_intake_api.md               # Job intake REST API documentation
 │   ├── deployment/                # Supabase PostgreSQL setup instructions
 │   └── testing/                   # QA and automated testing strategy
 └── scripts/                       # Automation scripts for Windows
@@ -232,12 +252,14 @@ gqt-hrms/
 
 ---
 
-## 7. Next Phase: Job Intake & Verification Checklist
+## 7. Next Phase: Creative Studio & Promotional Assets
 
-Phase 2 (Corporate CRM & HR Directory Management) is complete. The system is paused awaiting review before beginning:
-* **Phase 3: Job Intake & Verification Checklist (`apps.jobs` — Steps 5–7)**
-  * Structured Job Description intake & hiring criteria definition.
-  * 15-Point mandatory verification checklist.
-  * Placement Head approval gate before campus drive broadcast.
+Phase 3 (Job Intake & 5-Point Verification Checklist) is complete. The system is paused awaiting review before beginning:
+* **Phase 4: Creative Studio & Promotional Assets (`apps.creatives` — Steps 8–9)**
+  * Graphic Designer creative request dispatch from approved JDs.
+  * Marketing flyers, banners, social media posts, and QR codes.
+  * 4-Point design verification checklist.
+  * Placement Head creative sign-off gate before student notification.
+
 
 

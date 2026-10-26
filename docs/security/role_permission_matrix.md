@@ -97,6 +97,16 @@ To prevent broken object-level authorization (IDOR / BOLA):
 - **Denied Roles (`STUDENT`, `CREATIVE_DESIGNER`, `TRAINER`, `EVALUATOR`):** Have zero access to CRM endpoints (`403 Forbidden: You do not have authorization to access Corporate CRM records`).
 - **Configuration Management (`CRMConfiguration`):** Updating operational targets like `DAILY_OUTREACH_TARGET` is restricted to `ADMIN` and `PLACEMENT_HEAD` (`IsCRMManagerOrAdmin`).
 
+### 4.2. Phase 3 Confirmed Job Intake & Verification Permissions (Implemented & Verified)
+- **Job Intake Operational Roles:** `ADMIN`, `PLACEMENT_HEAD`, and `PLACEMENT_OFFICER` hold complete operational read/create/edit privileges on Job Requirements (`apps.jobs`).
+- **Checklist Auditing (`CanVerifyJobChecklist`):** Restricted strictly to `ADMIN`, `PLACEMENT_HEAD`, and `PLACEMENT_OFFICER`. Mutating checklist item status (`VERIFIED`, `REJECTED`, `NOT_APPLICABLE`) and recording verifier remarks is enforced via service-level atomic transactions.
+- **Step 7 Approval Gate (`CanApproveJobRequirement`):** Restricted strictly to `ADMIN` and `PLACEMENT_HEAD`. Final approval (`POST /approve/`), rejection (`POST /reject/`), and reopening (`POST /reopen/`) are strictly blocked for `PLACEMENT_OFFICER` (`403 Forbidden: Only Placement Head or Admin can sign off on job requirements`).
+- **Checklist Completeness Gating:** Even for `ADMIN` or `PLACEMENT_HEAD`, approval transitions fail with `400 Bad Request` unless all 5 mandatory checklist items are marked `VERIFIED`.
+- **Auditor Role (`AUDITOR`):** Strictly restricted to `SAFE_METHODS` (`GET`, `HEAD`, `OPTIONS`). All mutating lifecycle operations return `403 Forbidden`.
+- **Downstream Read-Only Roles:** `HR_RELATIONSHIP_MGR` and `CREATIVE_DESIGNER` hold read-only access to Job Requirements for downstream collaboration.
+- **Denied Roles (`STUDENT`, `TRAINER`, `EVALUATOR`):** Zero access to Job Intake endpoints (`403 Forbidden`). Students access job notices only after Step 10 official student publication.
+- **Post-Approval Immutability:** Once approved, direct editing of job requirements is blocked (`is_editable=False`). Material modifications require explicit reopening by the Placement Head.
+
 ---
 
 ## 5. Explicitly Denied Actions

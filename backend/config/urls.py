@@ -28,6 +28,9 @@ urlpatterns = [
                 # Corporate CRM & HR Directory
                 path("crm/", include("apps.crm.urls")),
 
+                # Job Requirements & Verification Checklist (Phase 3)
+                path("jobs/", include("apps.jobs.urls")),
+
                 # OpenAPI 3.1 Documentation
                 path("schema/", SpectacularAPIView.as_view(), name="schema"),
                 path(

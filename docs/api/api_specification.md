@@ -140,3 +140,33 @@ All error responses (400, 401, 403, 404, 500) follow a standardized format:
 | `GET` | `/api/v1/crm/config/` | CRM Staff / Auditor | Retrieve system operational configurations (e.g. `DAILY_OUTREACH_TARGET`). |
 | `POST` | `/api/v1/crm/config/` | Admin / Head | Update operational target values. |
 
+---
+
+## 6. Phase 3: Job Intake & Verification Checklist Endpoints
+
+### 6.1 Job Requirements Directory & Intake (Workflow Step 5)
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/api/v1/jobs/requirements/` | Staff / Auditor | List and filter job opportunities by company, status, employment type, search. |
+| `POST` | `/api/v1/jobs/requirements/` | Job Staff | Create job requirement draft with 10 structured fields; auto-generates 5 checklist items. |
+| `GET` | `/api/v1/jobs/requirements/{id}/` | Staff / Auditor | Retrieve full job requirement, nested 5-point checklist items, and decision history. |
+| `PATCH` | `/api/v1/jobs/requirements/{id}/` | Job Staff | Update editable draft (`DRAFT` or `CHANGES_REQUESTED`); blocked when locked/approved. |
+| `POST` | `/api/v1/jobs/requirements/{id}/submit-verification/` | Job Staff | Submit draft for formal verification; advances status to `PENDING_VERIFICATION`. |
+| `POST` | `/api/v1/jobs/requirements/{id}/archive/` | Job Staff | Archive requirement while preserving historical audit decisions. |
+| `POST` | `/api/v1/jobs/requirements/{id}/restore/` | Job Staff | Restore an archived job requirement. |
+
+### 6.2 5-Point Verification Checklist (Workflow Step 6)
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :---: | :---: |
+| `POST` | `/api/v1/jobs/requirements/{id}/checklist/{item_id}/verify/` | Job Verifier | Audit verification point (`VERIFIED`, `REJECTED`, `NOT_APPLICABLE`) with remarks; auto-advances job to `UNDER_REVIEW` and `VERIFIED` when 100% complete. |
+| `POST` | `/api/v1/jobs/requirements/{id}/return-correction/` | Job Verifier / Head | Return incomplete/incorrect job to draft state (`CHANGES_REQUESTED`) with mandatory feedback. |
+
+### 6.3 Placement Head Sign-Off & Queues (Workflow Step 7)
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :---: | :---: |
+| `POST` | `/api/v1/jobs/requirements/{id}/approve/` | Admin / Head | Final institutional sign-off gate; strictly enforces 100% checklist verification; locks JD for creative production. |
+| `POST` | `/api/v1/jobs/requirements/{id}/reject/` | Admin / Head | Formally reject opportunity with mandatory audit justification. |
+| `POST` | `/api/v1/jobs/requirements/{id}/reopen/` | Admin / Head | Formally reopen locked/rejected requirement back to `UNDER_REVIEW` for revisions. |
+| `GET` | `/api/v1/jobs/requirements/pending-verification/` | Job Verifier / Head | Operational queue of jobs awaiting checklist verification. |
+| `GET` | `/api/v1/jobs/requirements/pending-approval/` | Admin / Head | Operational queue of verified jobs awaiting Placement Head sign-off. |
+| `GET` | `/api/v1/jobs/requirements/metrics/` | Staff / Auditor | Dashboard aggregations for active, pending, verified, approved jobs, and upcoming deadlines. |

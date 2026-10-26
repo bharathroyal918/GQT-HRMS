@@ -52,17 +52,22 @@
   * *Validation:* Dynamic `is_overdue` evaluation; strict state transition lifecycle (OPEN/IN_PROGRESS -> COMPLETED/CANCELLED); authorized reopening workflow.
   * *Status:* ✅ Implemented & verified.
 
-### Phase 2: Job Requirement Management (Steps 5–9)
+### Phase 2: Job Requirement Management (Steps 5–9) — [STEPS 5–7 IMPLEMENTED & TESTED IN PHASE 3]
 * **Step 5: Collect Job Description**  
-  * *Business Requirement:* Intake formal hiring requirements (role, CTC range, bond, eligibility, deadlines).  
-  * *Required Entity:* `JobRequirement`, `JobDescription(version_number, required_skills, eligibility_criteria)`.
+  * *Business Requirement:* Intake formal corporate hiring requirements across 10 structured fields (role, description, skills, CTC range, location, work arrangement, bond, eligibility criteria, hiring process stages, and deadlines).  
+  * *Implemented Entity:* `apps.jobs.models.JobRequirement` (company, hr_contact, title, job_description, skills_required, min_salary, max_salary, salary_currency, salary_breakup, location, work_arrangement, employment_type, has_bond, bond_details, eligibility_criteria, min_cgpa, hiring_process, interview_date, registration_deadline, openings_count, status).  
+  * *Validation:* Server-side salary range check (`min_salary <= max_salary`), contact-to-company relationship integrity check (`hr_contact.company_id == company.id`), deadline validation.  
+  * *Status:* ✅ Implemented & verified.
 * **Step 6: Verify Job Details**  
-  * *Business Requirement:* Review against 12-point institutional verification checklist (salary authenticity, bond, test formats).  
-  * *Required Entity:* `JDVerificationChecklist`, `JDChecklistItem(item_code, status, reviewer_notes)`.  
-  * *Rule:* All 12 items must be `PASSED` before approval is unlocked.
-* **Step 7: Internal Approval**  
-  * *Business Requirement:* Placement Head formally signs off on opportunity; locks JD against unauthorized modifications.  
-  * *Required Entity:* `JobApprovalLog(job_requirement, actor, action, comments)`.
+  * *Business Requirement:* Institutional review against the 5 authoritative Step 6 verification criteria (`ELIGIBILITY`, `SALARY_AUTHENTICITY`, `COMPANY_AUTHENTICITY`, `INTERVIEW_PROCESS`, `REGISTRATION_DEADLINE`).  
+  * *Implemented Entity:* `apps.jobs.models.JobChecklistItem` (job_requirement, item_code, title, description, is_mandatory, status, verified_by, verified_at, remarks).  
+  * *Validation:* Extensible checklist model; composite uniqueness per requirement; automated state advancement to `UNDER_REVIEW` and `VERIFIED`.  
+  * *Status:* ✅ Implemented & verified.
+* **Step 7: Internal Approval Gate**  
+  * *Business Requirement:* Placement Head or Admin formally signs off on opportunity; strictly locks JD against unauthorized modifications.  
+  * *Implemented Entity:* `apps.jobs.models.JobApprovalDecision` (job_requirement, decision, actor, actor_role, comments, created_at).  
+  * *Gating Rule:* All 5 mandatory checklist criteria must evaluate to `VERIFIED` before approval can proceed. Premature approval attempts are rejected with `400 Bad Request`. Non-authorized roles receive `403 Forbidden`. Reopening requires explicit business justification and clears previous approval timestamps.  
+  * *Status:* ✅ Implemented & verified.
 * **Step 8: Send to Design Team**  
   * *Business Requirement:* Trigger creative asset requests (Flyer, Banner, Social Post) and assign graphic designer.  
   * *Required Entity:* `CreativeRequest(job_requirement, creative_type, assigned_designer)`.
