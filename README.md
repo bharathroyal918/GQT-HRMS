@@ -1,6 +1,6 @@
 # GQT HRMS & Recruitment CRM Platform
 
-> **Status:** Phase 6 (Student Preparation — Steps 15–23) Complete & Verified  
+> **Status:** Phase 7 (Candidate Submission & Profile Dispatch — Steps 24–28) Complete & Verified  
 > **Source of Truth:** `docs/requirements/workflow_traceability.md` (13 Business Phases, 41 Operational Steps, 19 CRM Modules, 8 AI Capabilities)  
 > **Role & Permission Matrix:** `docs/security/role_permission_matrix.md` (9 Operational Roles, Deny-by-Default, Object-Level Ownership)  
 > **Target Database:** Supabase-hosted PostgreSQL 16 Engine with SSL  
@@ -21,9 +21,10 @@
 | **Creative Studio Subsystem** | Promotional Assets, 4-Point Checklist, Versioning, Sign-off | `apps.creatives` module with monotonic versioning, SVG/magic bytes file security, 4-point design verification checklist, and gated Placement Head sign-off |
 | **Students & Eligibility Subsystem** | Broadcast, Registration, Resume Vault, Engine, Cohorts | `apps.students` module with multi-channel broadcast (WhatsApp/Telegram/Email/Portal), PDF `%PDF-` binary magic bytes verification, deterministic eligibility engine (Decimal CGPA), and cohort locking |
 | **Student Preparation Subsystem** | Rubric Reviews, Iteration Cycles, Timed Tests, Mocks, Gate | `apps.preparation` module covering Steps 15–23 with institutional rubric scoring, monotonic resume improvement cycles, aptitude/technical tests (answer-key security), grooming certification, mock scorecards, and Placement Head final readiness approval gate |
+| **Submissions & Dispatch Subsystem** | Candidate List, Master Excel, Resume Bundles, Dispatch, Ack | `apps.submissions` module covering Steps 24–28 with candidate roster assembly, master Excel spreadsheet generation with SHA-256 fingerprint, certified PDF resume attachments, corporate HR transmission logging, and recruiter receipt acknowledgment |
 | **Database** | Supabase PostgreSQL 16 via `psycopg` (v3) | SSL connection (`sslmode=require`), UUIDv4 primary keys, normalized case-insensitive email uniqueness, transactional operations |
 | **Security** | Argon2id, Fail-Closed Config, Log Redaction | Server-side validation, `SensitiveDataFilter` redacting secrets in logs, request correlation IDs (`X-Correlation-ID`) |
-| **Testing** | pytest-django, Vitest | 160 backend unit/integration tests, 41 frontend component/route tests (201 total automated tests), strict TypeScript checks |
+| **Testing** | pytest-django, Vitest | 180 backend unit/integration tests, 46 frontend component/route tests (226 total automated tests), strict TypeScript checks |
 
 
 
@@ -284,13 +285,15 @@ gqt-hrms/
 
 ---
  
-## 7. Next Phase: Company Submission & Profile Dispatch (Steps 24–28)
+## 7. Next Phase: Interview Management & Drive Day Tracking (Steps 29–35)
 
-Phase 6 (Student Preparation — Steps 15–23) is complete and verified with 100% green automated tests across all 6 quality gates (160 backend tests, 41 frontend tests). The system is strictly paused awaiting explicit authorization before beginning:
-* **Phase 7: Company Submission (Steps 24–28)**
-  * Step 24: Prepare Candidate List (filtering eligible candidates with certified placement resumes).
-  * Step 25: Generate Candidate Roster Master Spreadsheet (verified academic & contact metrics with SHA-256 fingerprint).
-  * Step 26: Attach Certified Resumes (bundling exact certified PDF versions).
-  * Step 27: Send Candidate Profiles to HR (dispatch packaging and timestamped transmission logging).
-  * Step 28: Company Acknowledgement (logging recruiter receipt and follow-up callback schedule).
+Phase 7 (Candidate Submission & Profile Dispatch — Steps 24–28) is complete and verified with 100% green automated tests across all 6 quality gates (180 backend tests, 46 frontend tests, 226 total tests). The system is strictly paused awaiting explicit authorization before beginning:
+* **Phase 8: Interview Management & Drive Day Tracking (Steps 29–35)**
+  * Step 29: Receive Shortlisted Candidates (ingest recruiter shortlist and match against submission roster).
+  * Step 30: Notify Students (dispatch interview drive invitations with venue, reporting time, and documents).
+  * Step 31: Automatic Reminders (scheduled idempotent reminders at 24h, 2h, and 30m before drive).
+  * Step 32: Attendance Confirmation (capture candidate RSVP status prior to drive day).
+  * Step 33: Drive Day Attendance & Conduct (record physical/virtual check-in and attendance).
+  * Step 34: Track Interview Rounds (sequential multi-round evaluation: Aptitude, Coding, Technical, HR, Managerial).
+  * Step 35: HR Follow-up During Drives (maintain recruiter communication on pending rounds and result dates).
 

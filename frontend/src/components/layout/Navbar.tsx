@@ -18,6 +18,7 @@ import {
   Sparkles,
   GraduationCap,
   ShieldCheck,
+  Send,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -86,6 +87,9 @@ export const Navbar: React.FC = () => {
     { name: 'Mock Interviews', href: '/preparation/mock-interviews', icon: Users },
     ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'AUDITOR'])
       ? [{ name: 'Readiness Gate', href: '/preparation/readiness-gate', icon: ShieldCheck }]
+      : []),
+    ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'AUDITOR'])
+      ? [{ name: 'Submissions', href: '/submissions', icon: Send }]
       : []),
     ...(hasRole('ADMIN') ? [{ name: 'Diagnostics', href: '/diagnostics', icon: Activity }] : []),
   ];

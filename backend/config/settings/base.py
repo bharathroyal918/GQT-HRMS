@@ -79,6 +79,7 @@ LOCAL_APPS = [
     "apps.creatives.apps.CreativesConfig",
     "apps.students.apps.StudentsConfig",
     "apps.preparation.apps.PreparationConfig",
+    "apps.submissions.apps.SubmissionsConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

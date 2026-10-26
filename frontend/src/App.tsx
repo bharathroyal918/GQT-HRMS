@@ -40,6 +40,7 @@ import { ResumeReviewWorkspacePage } from './pages/preparation/ResumeReviewWorks
 import { StudentAssessmentsPage } from './pages/preparation/StudentAssessmentsPage';
 import { MockInterviewWorkspacePage } from './pages/preparation/MockInterviewWorkspacePage';
 import { PlacementReadinessGatePage } from './pages/preparation/PlacementReadinessGatePage';
+import { CandidateSubmissionWorkspacePage } from './pages/submissions/CandidateSubmissionWorkspacePage';
 
 const CRM_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'AUDITOR'];
 const JOB_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'CREATIVE_DESIGNER', 'AUDITOR'];
@@ -47,6 +48,7 @@ const CREATIVE_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'CREATIV
 const STAFF_PUBLISH_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER'];
 const COHORT_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'AUDITOR'];
 const PREPARATION_GATE_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'AUDITOR'];
+const SUBMISSION_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'AUDITOR'];
 
 export const App: React.FC = () => {
   return (
@@ -295,6 +297,16 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute requiredRoles={PREPARATION_GATE_ROLES}>
                     <PlacementReadinessGatePage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Candidate Submissions & Profile Dispatch (Phase 7 / Steps 24-28) */}
+              <Route
+                path="submissions"
+                element={
+                  <ProtectedRoute requiredRoles={SUBMISSION_ROLES}>
+                    <CandidateSubmissionWorkspacePage />
                   </ProtectedRoute>
                 }
               />

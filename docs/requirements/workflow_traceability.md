@@ -137,12 +137,25 @@
   * *Gate Rule:* Mandatory Gate before Phase 7 (Steps 24-28: Company Submission & Profile Dispatch). Only `PLACEMENT_HEAD` or `ADMIN` can authorize clearance.  
   * *Implementation:* `apps.preparation.models.PlacementReadinessCertification(student, approved_resume, is_approved_for_placements, status, certified_by, certified_at, readiness_summary, notes)`.
 
-### Phase 5: Company Submission (Steps 24–28)
-* **Step 24: Prepare Candidate List:** Filter eligible cohort; strictly exclude candidates without placement-approved resumes.
-* **Step 25: Generate Candidate Roster Spreadsheet:** Compile standardized master spreadsheet with verified candidate academic/contact data and cryptographic SHA-256 digest.
-* **Step 26: Attach Resumes:** Bundle exact approved resume PDF versions corresponding to candidate roster entries.
-* **Step 27: Send Candidate Profiles to HR:** Dispatch package to corporate HR; record timestamp, dispatch provider ref, and update state to `SUBMITTED_TO_COMPANY`.
-* **Step 28: Company Acknowledgement:** Log HR confirmation of receipt, preliminary feedback, and next follow-up callback date.
+### Phase 7: Candidate Submission & Profile Dispatch (Steps 24–28) [IMPLEMENTED & VERIFIED]
+* **Step 24: Prepare Candidate List & Create Submission Package**  
+  * *Business Requirement:* Assemble verified candidate pool for an approved `JobRequirement`. Filter applicants or locked cohort members, strictly verifying that each candidate has an active Placement Head readiness certification (`PlacementReadinessCertification.is_approved_for_placements = True`) from Step 23 Gate.  
+  * *Implementation:* `apps.submissions.models.SubmissionPackage(job_requirement, company, hr_contact, title, status, candidate_count, package_hash, roster_file)` and `apps.submissions.models.CandidateSubmission(package, student, application, readiness_certification, submitted_resume, resume_version_number, resume_sha256, status, candidate_snapshot)`.  
+  * *Gate Rule:* Any candidate lacking readiness certification is rejected on the server with `400 Bad Request`. Duplicate active submissions for the same job are strictly blocked.
+* **Step 25: Generate Candidate Roster Spreadsheet (Master Excel Sheet)**  
+  * *Business Requirement:* Generate a standardized master XLSX spreadsheet with candidate metrics (name, roll no, email, phone, branch, CGPA, approved resume version, SHA-256 digest) using institutional Navy blue branding and openpyxl.  
+  * *Integrity & Security:* Cryptographic SHA-256 digest computed across generated spreadsheet bytes and persisted in `package.package_hash` to guarantee tamper detection.  
+  * *Implementation:* `apps.submissions.services.generate_candidate_roster_spreadsheet` and streaming authenticated download endpoint `/api/v1/submissions/packages/<id>/roster/download/`.
+* **Step 26: Attach Resumes**  
+  * *Business Requirement:* Bundle exact certified resume PDF versions corresponding to candidate roster entries. Re-verify SHA-256 checksums of attached resumes against certification records.  
+  * *Implementation:* `apps.submissions.services.verify_and_attach_resumes`. Advances package status to `READY_FOR_DISPATCH`.
+* **Step 27: Send Candidate Profiles to HR (Dispatch)**  
+  * *Business Requirement:* Dispatch submission package to corporate HR via verified communication channel (Email, WhatsApp, Portal link). Row-locking (`select_for_update`) prevents duplicate concurrent transmissions.  
+  * *Transmission Service:* Records sequential `SubmissionDispatchLog` with external provider message ID (`MSG-DISP-...`), recipient email/phone, and timestamp. Atomically advances package status to `DISPATCHED` and candidate submissions to `SUBMITTED`.  
+  * *Implementation:* `apps.submissions.services.dispatch_candidate_profiles_to_hr` and `/api/v1/submissions/packages/<id>/dispatch/`.
+* **Step 28: Company Acknowledgement**  
+  * *Business Requirement:* Log corporate recruiter confirmation of receipt, preliminary candidate pool remarks, tentative interview drive date, and agreed follow-up callback timeline.  
+  * *Implementation:* `apps.submissions.services.record_company_acknowledgement` and `/api/v1/submissions/packages/<id>/acknowledge/`. Transitions package and candidate submissions to `ACKNOWLEDGED`.
 
 ### Phases 6 & 7: Interview Management & Tracking (Steps 29–35)
 * **Step 29: Receive Shortlisted Candidates:** Ingest recruiter candidate shortlist; match against submission roster; advance to `SHORTLISTED`.
