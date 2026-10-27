@@ -157,14 +157,28 @@
   * *Business Requirement:* Log corporate recruiter confirmation of receipt, preliminary candidate pool remarks, tentative interview drive date, and agreed follow-up callback timeline.  
   * *Implementation:* `apps.submissions.services.record_company_acknowledgement` and `/api/v1/submissions/packages/<id>/acknowledge/`. Transitions package and candidate submissions to `ACKNOWLEDGED`.
 
-### Phases 6 & 7: Interview Management & Tracking (Steps 29–35)
-* **Step 29: Receive Shortlisted Candidates:** Ingest recruiter candidate shortlist; match against submission roster; advance to `SHORTLISTED`.
-* **Step 30: Notify Students:** Send drive invitations with venue / video link, reporting time, and mandatory documents.
-* **Step 31: Automatic Reminders:** Schedule and dispatch idempotent reminders at 24h, 2h, and 30m before drive via automated background worker.
-* **Step 32: Attendance Confirmation:** Capture candidate confirmation (`CONFIRMED`, `TENTATIVE`, `DECLINED`) prior to drive day.
-* **Step 33: Drive Day Attendance & Conduct:** Record physical/virtual attendance (`PRESENT`, `NO_SHOW`) and conduct (`CONDUCTED`, `MISSED`).
-* **Step 34: Track Interview Rounds:** Sequential round evaluation (Aptitude, Coding, Technical, HR, Managerial) with no skipping.
-* **Step 35: HR Follow-up During Drives:** Maintain communication with HR during evaluation; track pending rounds and expected result dates.
+### Phase 8: Interview Management & Tracking (Steps 29–35) [IMPLEMENTED & VERIFIED]
+* **Step 29: Receive Shortlisted Candidates [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Receive recruiter candidate shortlist; associate with approved job, corporate HR contact, and existing candidate submissions; advance submission status from `SUBMITTED` to `SHORTLISTED`.
+  * *Implementation:* `apps.interviews.models.CandidateShortlist`, `apps.interviews.services.receive_candidate_shortlist`, and `/api/v1/interviews/shortlists/`.
+* **Step 30: Notify Students [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Send drive invitations with 5 authoritative fields: `interview_date`, `interview_time`, `venue`, `meeting_link`, and `required_documents`. Supports `ONLINE`, `IN_PERSON`, and `HYBRID` modes.
+  * *Implementation:* `apps.interviews.models.InterviewSchedule`, `InterviewNotificationLog`, `apps.interviews.services.notify_student_of_interview`, and `/api/v1/interviews/schedules/<id>/notify/`.
+* **Step 31: Automatic Reminders [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Pre-generate and idempotently dispatch reminders at 24h, 2h, and 30m prior to scheduled interview. Row-level locking (`select_for_update(skip_locked=True)`) prevents duplicate dispatches. Short-notice scheduling skips past windows; rescheduling cancels obsolete reminders.
+  * *Implementation:* `apps.interviews.models.InterviewReminder`, `apps.interviews.services.process_due_reminders`, and `/api/v1/interviews/reminders/process-due/`.
+* **Step 32: Attendance Confirmation [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Capture candidate confirmation (`CONFIRMED`, `DECLINED`, `TENTATIVE`). Distinguishes student self-confirmation from staff-recorded entries while preserving audit history.
+  * *Implementation:* `apps.interviews.services.record_attendance_confirmation` and `/api/v1/interviews/schedules/<id>/confirm-attendance/`.
+* **Step 33: Interview Conducted [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Record actual occurrence outcome (`CONDUCTED`, `NOT_CONDUCTED`, `CANDIDATE_ABSENT`, `INTERVIEWER_ABSENT`, `RESCHEDULED`). Strictly distinct from attendance confirmation and final hiring decisions.
+  * *Implementation:* `apps.interviews.services.record_interview_conducted` and `/api/v1/interviews/schedules/<id>/record-conducted/`.
+* **Step 34: Track Interview Rounds [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Sequential multi-round evaluation across 5 authoritative categories: `APTITUDE`, `CODING`, `TECHNICAL`, `HR`, `MANAGERIAL`. Strips confidential staff notes from student serializers.
+  * *Implementation:* `apps.interviews.models.InterviewRound`, `apps.interviews.services.create_interview_round`, `evaluate_interview_round`, and `/api/v1/interviews/rounds/`.
+* **Step 35: Corporate HR Follow-up [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Maintain structured follow-up tracking with corporate HR for 3 authoritative metrics: `candidate_status_reported`, `pending_rounds`, and `expected_result_date` (confirmed vs tentative), with callback queueing via `next_follow_up_date`.
+  * *Implementation:* `apps.interviews.models.HRInterviewFollowUp`, `apps.interviews.services.record_hr_follow_up`, and `/api/v1/interviews/follow-ups/`.
 
 ### Phase 8: Placement Management (Steps 36–41)
 * **Step 36: Receive Final Results:** Ingest hiring outcomes from HR (`SELECTED`, `REJECTED`, `WAITING_LIST`, `ON_HOLD`).

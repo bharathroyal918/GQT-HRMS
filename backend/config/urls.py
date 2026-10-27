@@ -43,6 +43,9 @@ urlpatterns = [
                 # Candidate Submissions & Profile Dispatch (Phase 7 / Steps 24-28)
                 path("submissions/", include("apps.submissions.urls")),
 
+                # Interview Management & Tracking (Phase 8 / Steps 29-35)
+                path("interviews/", include("apps.interviews.urls")),
+
                 # OpenAPI 3.1 Documentation
                 path("schema/", SpectacularAPIView.as_view(), name="schema"),
                 path(

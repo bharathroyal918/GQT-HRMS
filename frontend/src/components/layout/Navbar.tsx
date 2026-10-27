@@ -91,6 +91,9 @@ export const Navbar: React.FC = () => {
     ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'AUDITOR'])
       ? [{ name: 'Submissions', href: '/submissions', icon: Send }]
       : []),
+    ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'EVALUATOR', 'TRAINER', 'STUDENT', 'AUDITOR'])
+      ? [{ name: 'Interviews', href: '/interviews', icon: Calendar }]
+      : []),
     ...(hasRole('ADMIN') ? [{ name: 'Diagnostics', href: '/diagnostics', icon: Activity }] : []),
   ];
 

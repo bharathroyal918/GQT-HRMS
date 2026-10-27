@@ -1,6 +1,6 @@
 # GQT HRMS & Recruitment CRM Platform
 
-> **Status:** Phase 7 (Candidate Submission & Profile Dispatch — Steps 24–28) Complete & Verified  
+> **Status:** Phase 8 (Interview Management & Tracking — Steps 29–35) Complete & Verified  
 > **Source of Truth:** `docs/requirements/workflow_traceability.md` (13 Business Phases, 41 Operational Steps, 19 CRM Modules, 8 AI Capabilities)  
 > **Role & Permission Matrix:** `docs/security/role_permission_matrix.md` (9 Operational Roles, Deny-by-Default, Object-Level Ownership)  
 > **Target Database:** Supabase-hosted PostgreSQL 16 Engine with SSL  
@@ -22,9 +22,10 @@
 | **Students & Eligibility Subsystem** | Broadcast, Registration, Resume Vault, Engine, Cohorts | `apps.students` module with multi-channel broadcast (WhatsApp/Telegram/Email/Portal), PDF `%PDF-` binary magic bytes verification, deterministic eligibility engine (Decimal CGPA), and cohort locking |
 | **Student Preparation Subsystem** | Rubric Reviews, Iteration Cycles, Timed Tests, Mocks, Gate | `apps.preparation` module covering Steps 15–23 with institutional rubric scoring, monotonic resume improvement cycles, aptitude/technical tests (answer-key security), grooming certification, mock scorecards, and Placement Head final readiness approval gate |
 | **Submissions & Dispatch Subsystem** | Candidate List, Master Excel, Resume Bundles, Dispatch, Ack | `apps.submissions` module covering Steps 24–28 with candidate roster assembly, master Excel spreadsheet generation with SHA-256 fingerprint, certified PDF resume attachments, corporate HR transmission logging, and recruiter receipt acknowledgment |
+| **Interview Management Subsystem** | Shortlists, Schedules, Notifications, Reminders, Rounds, Follow-ups | `apps.interviews` module covering Steps 29–35 with corporate HR shortlist intake, multi-channel scheduling (Online/In-person/Hybrid), 5 authoritative notification fields, idempotent automatic reminders (24h, 2h, 30m), attendance confirmation, interview execution outcomes, 5-category round tracking (Aptitude, Coding, Technical, HR, Managerial) with student notes isolation, and corporate HR follow-up metrics |
 | **Database** | Supabase PostgreSQL 16 via `psycopg` (v3) | SSL connection (`sslmode=require`), UUIDv4 primary keys, normalized case-insensitive email uniqueness, transactional operations |
 | **Security** | Argon2id, Fail-Closed Config, Log Redaction | Server-side validation, `SensitiveDataFilter` redacting secrets in logs, request correlation IDs (`X-Correlation-ID`) |
-| **Testing** | pytest-django, Vitest | 180 backend unit/integration tests, 46 frontend component/route tests (226 total automated tests), strict TypeScript checks |
+| **Testing** | pytest-django, Vitest | 202 backend unit/integration tests, 55 frontend component/route tests (257 total automated tests), strict TypeScript checks |
 
 
 
