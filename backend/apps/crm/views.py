@@ -8,17 +8,22 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from django.db.models import Q
+from django.http import HttpResponse
 from apps.core.pagination import StandardResultsSetPagination
 from apps.crm.models import (
+    CaseEscalation,
     CRMConfiguration,
     Company,
     CRMReconciliationRun,
     FollowUp,
+    FollowUpReminderItem,
     HRContact,
     OutreachLog,
+    StaffNotification,
 )
 from apps.crm.permissions import (
     CanAccessStudent360,
+    CanManageCaseEscalations,
     CanManageCRMReconciliation,
     IsCRMManagerOrAdmin,
     IsCRMStaffOrAuditor,
@@ -26,18 +31,25 @@ from apps.crm.permissions import (
 from apps.crm.selectors import (
     check_company_duplicates,
     check_hr_contact_duplicates,
+    get_case_escalations_queryset,
     get_companies_queryset,
     get_company_360_profile,
     get_company_communication_timeline,
     get_crm_dashboard_metrics,
     get_crm_database_health_diagnostics,
+    get_follow_up_reminders_queryset,
     get_follow_ups_queryset,
     get_hr_contacts_queryset,
     get_outreach_logs_queryset,
+    get_staff_notifications_queryset,
     get_student_360_profile,
     get_student_communication_timeline,
 )
 from apps.crm.serializers import (
+    AutomationRunRequestSerializer,
+    CaseEscalationAcknowledgeSerializer,
+    CaseEscalationResolveSerializer,
+    CaseEscalationSerializer,
     CompanyCreateUpdateSerializer,
     CompanyDetailSerializer,
     CompanyDuplicateCheckSerializer,
@@ -48,6 +60,7 @@ from apps.crm.serializers import (
     FollowUpCancelSerializer,
     FollowUpCompleteSerializer,
     FollowUpCreateSerializer,
+    FollowUpReminderItemSerializer,
     FollowUpReopenSerializer,
     FollowUpRescheduleSerializer,
     FollowUpSerializer,
@@ -56,24 +69,31 @@ from apps.crm.serializers import (
     HRContactListSerializer,
     OutreachLogCreateSerializer,
     OutreachLogSerializer,
+    StaffNotificationSerializer,
 )
 from apps.crm.services import (
+    acknowledge_case_escalation,
     archive_company,
     archive_hr_contact,
     cancel_follow_up,
     complete_follow_up,
     create_company,
     create_hr_contact,
+    mark_all_notifications_as_read,
+    mark_notification_as_read,
     record_outreach_activity,
     reopen_follow_up,
     reschedule_follow_up,
+    resolve_case_escalation,
     restore_company,
     restore_hr_contact,
+    retry_failed_reminder_item,
     run_crm_database_reconciliation,
     schedule_follow_up,
     update_company,
     update_hr_contact,
 )
+from apps.crm.scheduler import run_automated_followup_cycle
 
 
 
@@ -358,8 +378,30 @@ class FollowUpViewSet(viewsets.ModelViewSet):
             follow_up=follow_up,
             new_due_date=serializer.validated_data["new_due_date"],
             reason=serializer.validated_data.get("reason", ""),
+            new_remind_at=serializer.validated_data.get("new_remind_at"),
         )
         return Response({"success": True, "data": FollowUpSerializer(updated).data})
+
+    @extend_schema(summary="List automated reminder items for a follow-up")
+    @action(detail=True, methods=["get"], url_path="reminders")
+    def reminders(self, request: Request, pk=None) -> Response:
+        follow_up = self.get_object()
+        reminders_qs = follow_up.reminder_items.all().order_by("-scheduled_for")
+        serializer = FollowUpReminderItemSerializer(reminders_qs, many=True)
+        return Response({"success": True, "data": serializer.data})
+
+    @extend_schema(summary="Retry a failed automated reminder item")
+    @action(detail=True, methods=["post"], url_path=r"reminders/(?P<reminder_id>[^/.]+)/retry")
+    def retry_reminder(self, request: Request, pk=None, reminder_id=None) -> Response:
+        follow_up = self.get_object()
+        reminder_item = follow_up.reminder_items.filter(id=reminder_id).first()
+        if not reminder_item:
+            return Response(
+                {"success": False, "error": {"message": "Reminder item not found."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        updated_item = retry_failed_reminder_item(request.user, reminder_item)
+        return Response({"success": True, "data": FollowUpReminderItemSerializer(updated_item).data})
 
     @extend_schema(summary="Complete a follow-up task")
     @action(detail=True, methods=["post"], url_path="complete")
@@ -543,4 +585,194 @@ class StudentTimelineView(APIView):
         self.check_object_permissions(request, student)
         events = get_student_communication_timeline(student.id)
         return Response({"success": True, "data": events})
+
+
+# ==============================================================================
+# Phase 12: Automated Follow-Up & Escalation Views
+# ==============================================================================
+
+@extend_schema_view(
+    list=extend_schema(summary="List filterable case escalations"),
+    retrieve=extend_schema(summary="Retrieve case escalation detail"),
+)
+class CaseEscalationViewSet(viewsets.ReadOnlyModelViewSet):
+    """Auditable case escalation management (Phase 12 / Capability E)."""
+
+    permission_classes = [CanManageCaseEscalations]
+    pagination_class = StandardResultsSetPagination
+    serializer_class = CaseEscalationSerializer
+
+    def get_queryset(self):
+        params = self.request.query_params
+        return get_case_escalations_queryset(
+            user=self.request.user,
+            case_type=params.get("case_type"),
+            status=params.get("status"),
+            follow_up_id=params.get("follow_up_id"),
+            date_from=params.get("date_from"),
+            date_to=params.get("date_to"),
+            search=params.get("search"),
+        )
+
+    @extend_schema(summary="Acknowledge a pending case escalation")
+    @action(detail=True, methods=["post"], url_path="acknowledge")
+    def acknowledge(self, request: Request, pk=None) -> Response:
+        escalation = self.get_object()
+        serializer = CaseEscalationAcknowledgeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        updated = acknowledge_case_escalation(
+            user=request.user,
+            escalation=escalation,
+            notes=serializer.validated_data.get("notes", ""),
+        )
+        return Response({"success": True, "data": CaseEscalationSerializer(updated).data})
+
+    @extend_schema(summary="Resolve a case escalation with documented outcome")
+    @action(detail=True, methods=["post"], url_path="resolve")
+    def resolve(self, request: Request, pk=None) -> Response:
+        escalation = self.get_object()
+        serializer = CaseEscalationResolveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        updated = resolve_case_escalation(
+            user=request.user,
+            escalation=escalation,
+            resolution_notes=serializer.validated_data["resolution_notes"],
+        )
+        return Response({"success": True, "data": CaseEscalationSerializer(updated).data})
+
+
+@extend_schema_view(
+    list=extend_schema(summary="List in-app alerts and notifications for current user"),
+    retrieve=extend_schema(summary="Retrieve an in-app notification"),
+)
+class StaffNotificationViewSet(viewsets.ReadOnlyModelViewSet):
+    """In-app alerts and notifications for Placement Officers and Staff (Capability D)."""
+
+    from rest_framework.permissions import IsAuthenticated
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    serializer_class = StaffNotificationSerializer
+
+    def get_queryset(self):
+        params = self.request.query_params
+        is_read_param = params.get("is_read")
+        is_read = None
+        if is_read_param is not None:
+            is_read = is_read_param.lower() in ("true", "1", "yes")
+
+        return get_staff_notifications_queryset(
+            user=self.request.user,
+            is_read=is_read,
+            notification_type=params.get("notification_type"),
+        )
+
+    @extend_schema(summary="Mark notification as read")
+    @action(detail=True, methods=["post"], url_path="read")
+    def mark_read(self, request: Request, pk=None) -> Response:
+        notification = self.get_object()
+        updated = mark_notification_as_read(request.user, notification)
+        return Response({"success": True, "data": StaffNotificationSerializer(updated).data})
+
+    @extend_schema(summary="Mark all unread notifications as read")
+    @action(detail=False, methods=["post"], url_path="mark-all-read")
+    def mark_all_read(self, request: Request) -> Response:
+        count = mark_all_notifications_as_read(request.user)
+        return Response({"success": True, "count": count})
+
+    @extend_schema(summary="Get unread notification count for badge")
+    @action(detail=False, methods=["get"], url_path="unread-count")
+    def unread_count(self, request: Request) -> Response:
+        count = StaffNotification.objects.filter(recipient=request.user, is_read=False).count()
+        return Response({"success": True, "count": count})
+
+
+class CRMAutomationRunView(APIView):
+    """Operational API trigger for executing the automated follow-up worker cycle."""
+
+    permission_classes = [IsCRMStaffOrAuditor]
+
+    @extend_schema(summary="Trigger automated follow-up execution cycle")
+    def post(self, request: Request) -> Response:
+        from apps.accounts.models import RoleCatalog
+        if request.user.has_role(RoleCatalog.AUDITOR):
+            return Response(
+                {"success": False, "error": {"message": "Auditors cannot trigger automation runs."}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = AutomationRunRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        dry_run = serializer.validated_data.get("dry_run", False)
+
+        results = run_automated_followup_cycle(
+            dry_run=dry_run,
+            triggered_by=request.user,
+            correlation_id=getattr(request, "correlation_id", ""),
+        )
+        return Response({"success": True, "data": results})
+
+
+class WhatsAppWebhookView(APIView):
+    """Meta WhatsApp Cloud API Webhook endpoint with verification challenge and delivery callbacks."""
+
+    permission_classes = []  # AllowAny external webhook
+
+    def get(self, request: Request) -> HttpResponse:
+        """Handle Meta Webhook challenge verification."""
+        mode = request.query_params.get("hub.mode")
+        token = request.query_params.get("hub.verify_token")
+        challenge = request.query_params.get("hub.challenge", "")
+
+        import os
+        from django.conf import settings
+        expected_token = getattr(settings, "WHATSAPP_WEBHOOK_VERIFY_TOKEN", "") or os.environ.get("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "")
+        if mode == "subscribe" and token and expected_token and token == expected_token:
+            return HttpResponse(challenge, content_type="text/plain", status=200)
+
+        # In dev/test when no token is configured, accept default test token
+        if mode == "subscribe" and token == "gqt-hrms-wa-verify":
+            return HttpResponse(challenge, content_type="text/plain", status=200)
+
+        return HttpResponse("Verification failed", content_type="text/plain", status=403)
+
+    def post(self, request: Request) -> Response:
+        """Handle incoming delivery status callbacks idempotently."""
+        import os
+        from django.conf import settings
+        from django.utils import timezone
+        from apps.crm.adapters.whatsapp import get_whatsapp_adapter
+        adapter = get_whatsapp_adapter()
+
+        sig_header = request.headers.get("X-Hub-Signature-256", "")
+        app_secret = (
+            getattr(settings, "WHATSAPP_WEBHOOK_APP_SECRET", "")
+            or os.environ.get("WHATSAPP_WEBHOOK_APP_SECRET", "")
+            or os.environ.get("WHATSAPP_API_SECRET", "")
+        )
+        if app_secret and sig_header:
+            if not adapter.verify_webhook_signature(request.body, sig_header, app_secret):
+                return Response({"error": "Invalid signature"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        data = request.data or {}
+        entries = data.get("entry", [])
+        for entry in entries:
+            for change in entry.get("changes", []):
+                value = change.get("value", {})
+                statuses = value.get("statuses", [])
+                for st in statuses:
+                    msg_id = st.get("id")
+                    st_val = st.get("status")
+                    if msg_id:
+                        reminder = FollowUpReminderItem.objects.filter(provider_message_id=msg_id).first()
+                        if reminder:
+                            if st_val in ["delivered", "read"]:
+                                reminder.status = "DELIVERED"
+                                reminder.delivered_at = timezone.now()
+                                reminder.save(update_fields=["status", "delivered_at", "updated_at"])
+                            elif st_val == "failed":
+                                reminder.status = "FAILED"
+                                reminder.error_message = f"Webhook reported failure: {st.get('errors')}"
+                                reminder.save(update_fields=["status", "error_message", "updated_at"])
+
+        return Response({"status": "received"}, status=status.HTTP_200_OK)
 

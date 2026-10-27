@@ -156,15 +156,59 @@ export interface OutreachLogItem {
   created_at: string;
 }
 
+export type FollowUpCategory =
+  | 'HR_OUTREACH'
+  | 'STUDENT_RECONNECT'
+  | 'INTERVIEW_CONFIRMATION'
+  | 'OFFER_ACCEPTANCE'
+  | 'JOINING_CHECK'
+  | 'GENERAL_RECONNECT';
+
+export type ReminderChannel = 'EMAIL' | 'WHATSAPP' | 'BOTH' | 'NONE';
+
+export type ReminderDeliveryStatus =
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'SENT'
+  | 'DELIVERED'
+  | 'FAILED'
+  | 'RETRY_SCHEDULED'
+  | 'CANCELLED';
+
+export type StaffNotificationType =
+  | 'FOLLOW_UP_DUE'
+  | 'FOLLOW_UP_OVERDUE'
+  | 'COMMUNICATION_FAILED'
+  | 'CASE_ESCALATED'
+  | 'SYSTEM_ALERT';
+
+export type CaseEscalationType = 'OVERDUE_FOLLOW_UP' | 'UNRESOLVED_COMMUNICATION_FAILURE';
+
+export type CaseEscalationStatus = 'PENDING' | 'ACKNOWLEDGED' | 'RESOLVED' | 'DISMISSED';
+
+export type CaseEscalationLevel = 'LEVEL_1' | 'LEVEL_2';
+
 export interface FollowUpItem {
   id: string;
   company: CompanyMinimal;
   hr_contact: HRContactSummary | null;
   assigned_to: UserMinimal;
+  category?: FollowUpCategory;
+  student?: string | null;
+  student_name?: string | null;
+  student_roll_number?: string | null;
+  job_requirement?: string | null;
+  job_title?: string | null;
+  interview_schedule?: string | null;
+  placement_status?: string | null;
   due_date: string;
   priority: FollowUpPriority;
   status: FollowUpStatus;
   purpose: string;
+  notes?: string;
+  remind_at?: string | null;
+  reminder_channel?: ReminderChannel;
+  reminders_count?: number;
   is_overdue: boolean;
   rescheduled_count: number;
   completion_notes: string;
@@ -174,6 +218,82 @@ export interface FollowUpItem {
   created_by: UserMinimal | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface FollowUpReminderItem {
+  id: string;
+  follow_up: string;
+  follow_up_purpose: string;
+  company_name: string;
+  channel: 'EMAIL' | 'WHATSAPP';
+  recipient: string;
+  recipient_name: string;
+  scheduled_for: string;
+  status: ReminderDeliveryStatus;
+  attempt_count: number;
+  max_attempts: number;
+  backoff_until: string | null;
+  sent_at: string | null;
+  delivered_at: string | null;
+  provider_message_id: string;
+  error_message: string;
+  is_simulated: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StaffNotification {
+  id: string;
+  recipient: string;
+  notification_type: StaffNotificationType;
+  title: string;
+  message: string;
+  link: string;
+  follow_up: string | null;
+  company_name: string | null;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface CaseEscalation {
+  id: string;
+  case_type: CaseEscalationType;
+  follow_up: string | null;
+  company_name: string | null;
+  follow_up_purpose: string | null;
+  follow_up_due_date: string | null;
+  escalated_to: string;
+  escalated_to_name: string | null;
+  escalated_to_email: string | null;
+  escalated_by: string | null;
+  previous_assigned_to: string | null;
+  previous_assigned_to_name: string | null;
+  reason: string;
+  escalation_level: CaseEscalationLevel;
+  status: CaseEscalationStatus;
+  acknowledged_at: string | null;
+  acknowledged_by: string | null;
+  acknowledged_by_name: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  resolved_by_name: string | null;
+  resolution_notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AutomationRunResult {
+  success: boolean;
+  dry_run: boolean;
+  correlation_id: string;
+  executed_at: string;
+  reminders_processed?: number;
+  notifications_created?: number;
+  escalations_created?: number;
+  reminders_eligible?: number;
+  due_notifications_eligible?: number;
+  overdue_escalations_eligible?: number;
 }
 
 export interface CRMMetrics {

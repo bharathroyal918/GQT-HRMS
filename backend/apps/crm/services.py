@@ -6,13 +6,19 @@ from django.utils import timezone
 
 from apps.core.models import AuditLog
 from apps.crm.models import (
+    CaseEscalation,
+    CaseEscalationStatus,
     Company,
     CompanyRelationshipStatus,
     CRMReconciliationRun,
     FollowUp,
+    FollowUpReminderItem,
     FollowUpStatus,
     HRContact,
     OutreachLog,
+    ReminderChannel,
+    ReminderDeliveryStatus,
+    StaffNotification,
 )
 
 
@@ -241,36 +247,125 @@ def record_outreach_activity(user: Any, validated_data: Dict[str, Any]) -> Outre
     return outreach
 
 
-@transaction.atomic
-def schedule_follow_up(user: Any, validated_data: Dict[str, Any]) -> FollowUp:
-    """Schedule a corporate follow-up task with relationship validation."""
-    company = validated_data.get("company")
-    contact = validated_data.get("hr_contact")
+def queue_follow_up_reminders(
+    follow_up: FollowUp, user: Any = None, correlation_id: str = ""
+) -> List[FollowUpReminderItem]:
+    """Idempotently queue automated reminder items for a scheduled follow-up."""
+    if not follow_up.remind_at or follow_up.reminder_channel == ReminderChannel.NONE:
+        return []
 
-    if contact and contact.company_id != company.id:
+    queued: List[FollowUpReminderItem] = []
+    remind_timestamp = int(follow_up.remind_at.timestamp())
+
+    # Resolve email recipient
+    email_recipient = ""
+    email_name = ""
+    if follow_up.hr_contact and follow_up.hr_contact.email:
+        email_recipient = follow_up.hr_contact.email
+        email_name = follow_up.hr_contact.name
+    elif follow_up.student and getattr(follow_up.student, "institutional_email", None):
+        email_recipient = follow_up.student.institutional_email
+        email_name = getattr(getattr(follow_up.student, "user", None), "full_name", "")
+    elif follow_up.assigned_to and follow_up.assigned_to.email:
+        email_recipient = follow_up.assigned_to.email
+        email_name = follow_up.assigned_to.full_name
+
+    # Resolve phone recipient
+    phone_recipient = ""
+    phone_name = ""
+    if follow_up.hr_contact and follow_up.hr_contact.phone:
+        phone_recipient = follow_up.hr_contact.phone
+        phone_name = follow_up.hr_contact.name
+    elif follow_up.student and getattr(follow_up.student, "phone_number", None):
+        phone_recipient = follow_up.student.phone_number
+        phone_name = getattr(getattr(follow_up.student, "user", None), "full_name", "")
+    elif follow_up.assigned_to and getattr(follow_up.assigned_to, "phone_number", None):
+        phone_recipient = follow_up.assigned_to.phone_number
+        phone_name = follow_up.assigned_to.full_name
+
+    # 1. Email Reminder
+    if follow_up.reminder_channel in [ReminderChannel.EMAIL, ReminderChannel.BOTH] and email_recipient:
+        email_key = f"REM-{follow_up.id}-EMAIL-{remind_timestamp}"
+        item, created = FollowUpReminderItem.objects.get_or_create(
+            idempotency_key=email_key,
+            defaults={
+                "follow_up": follow_up,
+                "channel": "EMAIL",
+                "recipient": email_recipient,
+                "recipient_name": email_name,
+                "scheduled_for": follow_up.remind_at,
+                "status": ReminderDeliveryStatus.PENDING,
+            },
+        )
+        if created:
+            queued.append(item)
+
+    # 2. WhatsApp Reminder
+    if follow_up.reminder_channel in [ReminderChannel.WHATSAPP, ReminderChannel.BOTH] and phone_recipient:
+        wa_key = f"REM-{follow_up.id}-WA-{remind_timestamp}"
+        item, created = FollowUpReminderItem.objects.get_or_create(
+            idempotency_key=wa_key,
+            defaults={
+                "follow_up": follow_up,
+                "channel": "WHATSAPP",
+                "recipient": phone_recipient,
+                "recipient_name": phone_name,
+                "scheduled_for": follow_up.remind_at,
+                "status": ReminderDeliveryStatus.PENDING,
+            },
+        )
+        if created:
+            queued.append(item)
+
+    return queued
+
+
+@transaction.atomic
+def schedule_follow_up(
+    user: Any = None, validated_data: Optional[Dict[str, Any]] = None, **kwargs: Any
+) -> FollowUp:
+    """Schedule a corporate follow-up task with relationship validation and reminder queueing."""
+    data = dict(validated_data or {})
+    data.update(kwargs)
+
+    actor = user or data.pop("created_by", None) or data.get("assigned_to")
+
+    company = data.get("company")
+    contact = data.get("hr_contact")
+
+    if contact and company and contact.company_id != getattr(company, "id", None):
         raise ValidationError(
             {"hr_contact": f"Contact '{contact.name}' does not belong to company '{company.name}'."}
         )
 
-    assigned_to = validated_data.pop("assigned_to", None) or user
+    if not data.get("remind_at") and data.get("reminder_channel") and data.get("reminder_channel") != ReminderChannel.NONE:
+        data["remind_at"] = data.get("due_date")
+
+    assigned_to = data.pop("assigned_to", None) or actor
 
     follow_up = FollowUp.objects.create(
         assigned_to=assigned_to,
-        created_by=user if getattr(user, "is_authenticated", False) else None,
-        updated_by=user if getattr(user, "is_authenticated", False) else None,
+        created_by=actor if getattr(actor, "is_authenticated", False) else None,
+        updated_by=actor if getattr(actor, "is_authenticated", False) else None,
         status=FollowUpStatus.OPEN,
-        **validated_data,
+        **data,
     )
+
+    # Queue automated reminders if requested
+    queue_follow_up_reminders(follow_up, user=actor)
+
     log_crm_audit(
-        user=user,
+        user=actor,
         action="FOLLOW_UP_SCHEDULED",
         resource_type="FollowUp",
         resource_id=follow_up.id,
         changes={
-            "company": str(company.id),
+            "company": str(getattr(company, "id", company)) if company else None,
             "due_date": follow_up.due_date.isoformat(),
             "priority": follow_up.priority,
-            "assigned_to": str(assigned_to.id),
+            "assigned_to": str(getattr(assigned_to, "id", assigned_to)) if assigned_to else None,
+            "category": follow_up.category,
+            "reminder_channel": follow_up.reminder_channel,
         },
     )
     return follow_up
@@ -278,87 +373,165 @@ def schedule_follow_up(user: Any, validated_data: Dict[str, Any]) -> FollowUp:
 
 @transaction.atomic
 def reschedule_follow_up(
-    user: Any, follow_up: FollowUp, new_due_date: Any, reason: str = ""
+    user: Any = None,
+    follow_up: Optional[FollowUp] = None,
+    new_due_date: Any = None,
+    reason: str = "",
+    new_remind_at: Optional[Any] = None,
+    actor: Any = None,
+    **kwargs: Any,
 ) -> FollowUp:
     """Reschedule an open or in-progress follow-up with incremented counter and audit log."""
-    if follow_up.status in [FollowUpStatus.COMPLETED, FollowUpStatus.CANCELLED]:
+    if isinstance(user, FollowUp):
+        target_fu = user
+        operator = actor or getattr(target_fu, "assigned_to", None)
+    else:
+        operator = user or actor
+        target_fu = follow_up or kwargs.get("target")
+
+    if not target_fu:
+        raise ValidationError({"follow_up": "A valid follow_up instance is required."})
+
+    if target_fu.status in [FollowUpStatus.COMPLETED, FollowUpStatus.CANCELLED]:
         raise ValidationError(
-            {"status": f"Cannot reschedule a follow-up with status '{follow_up.status}'."}
+            {"status": f"Cannot reschedule a follow-up with status '{target_fu.status}'."}
         )
 
-    old_date = follow_up.due_date
-    follow_up.due_date = new_due_date
-    follow_up.rescheduled_count += 1
-    follow_up.updated_by = user if getattr(user, "is_authenticated", False) else None
-    follow_up.save()
+    old_date = target_fu.due_date
+    target_fu.due_date = new_due_date
+    target_fu.rescheduled_count += 1
+    if new_remind_at is not None:
+        target_fu.remind_at = new_remind_at
+    elif target_fu.remind_at:
+        target_fu.remind_at = new_due_date
+    target_fu.updated_by = operator if getattr(operator, "is_authenticated", False) else None
+    target_fu.save()
+
+    # Cancel obsolete pending reminders and queue updated ones
+    target_fu.reminder_items.filter(status=ReminderDeliveryStatus.PENDING).update(
+        status=ReminderDeliveryStatus.CANCELLED,
+        error_message="Obsolete due to rescheduling",
+        updated_at=timezone.now(),
+    )
+    queue_follow_up_reminders(target_fu, user=operator)
 
     log_crm_audit(
-        user=user,
+        user=operator,
         action="FOLLOW_UP_RESCHEDULED",
         resource_type="FollowUp",
-        resource_id=follow_up.id,
+        resource_id=target_fu.id,
         changes={
             "old_due_date": old_date.isoformat(),
             "new_due_date": new_due_date.isoformat() if hasattr(new_due_date, "isoformat") else str(new_due_date),
             "reason": reason,
-            "rescheduled_count": follow_up.rescheduled_count,
+            "rescheduled_count": target_fu.rescheduled_count,
         },
     )
-    return follow_up
+    return target_fu
 
 
 @transaction.atomic
 def complete_follow_up(
-    user: Any, follow_up: FollowUp, completion_notes: str = ""
+    user: Any = None,
+    follow_up: Optional[FollowUp] = None,
+    completion_notes: str = "",
+    actor: Any = None,
+    notes: str = "",
+    **kwargs: Any,
 ) -> FollowUp:
-    """Transition follow-up to COMPLETED status with completion timestamp and user reference."""
-    if follow_up.status == FollowUpStatus.COMPLETED:
+    """Transition follow-up to COMPLETED status with completion timestamp and cancel pending reminders."""
+    if isinstance(user, FollowUp):
+        target_fu = user
+        operator = actor or getattr(target_fu, "assigned_to", None)
+    else:
+        operator = user or actor
+        target_fu = follow_up or kwargs.get("target")
+
+    if not target_fu:
+        raise ValidationError({"follow_up": "A valid follow_up instance is required."})
+
+    notes_val = completion_notes or notes
+
+    if target_fu.status == FollowUpStatus.COMPLETED:
         raise ValidationError({"status": "This follow-up is already marked completed."})
 
-    if follow_up.status == FollowUpStatus.CANCELLED:
+    if target_fu.status == FollowUpStatus.CANCELLED:
         raise ValidationError({"status": "Cannot complete a cancelled follow-up."})
 
-    follow_up.status = FollowUpStatus.COMPLETED
-    follow_up.completed_at = timezone.now()
-    follow_up.completed_by = user if getattr(user, "is_authenticated", False) else None
-    follow_up.completion_notes = completion_notes
-    follow_up.updated_by = user if getattr(user, "is_authenticated", False) else None
-    follow_up.save()
+    target_fu.status = FollowUpStatus.COMPLETED
+    target_fu.completed_at = timezone.now()
+    target_fu.completed_by = operator if getattr(operator, "is_authenticated", False) else None
+    target_fu.completion_notes = notes_val
+    target_fu.updated_by = operator if getattr(operator, "is_authenticated", False) else None
+    target_fu.save()
+
+    # Cancel any pending reminder items
+    target_fu.reminder_items.filter(status=ReminderDeliveryStatus.PENDING).update(
+        status=ReminderDeliveryStatus.CANCELLED,
+        error_message="Cancelled on follow-up completion",
+        updated_at=timezone.now(),
+    )
 
     log_crm_audit(
-        user=user,
+        user=operator,
         action="FOLLOW_UP_COMPLETED",
         resource_type="FollowUp",
-        resource_id=follow_up.id,
+        resource_id=target_fu.id,
         changes={
-            "completed_by": str(user.id) if getattr(user, "id", None) else None,
-            "completed_at": follow_up.completed_at.isoformat(),
+            "completed_by": str(operator.id) if getattr(operator, "id", None) else None,
+            "completed_at": target_fu.completed_at.isoformat(),
         },
     )
-    return follow_up
+    return target_fu
 
 
 @transaction.atomic
 def cancel_follow_up(
-    user: Any, follow_up: FollowUp, cancellation_reason: str = ""
+    user: Any = None,
+    follow_up: Optional[FollowUp] = None,
+    cancellation_reason: str = "",
+    actor: Any = None,
+    reason: str = "",
+    **kwargs: Any,
 ) -> FollowUp:
-    """Cancel a follow-up with explicit cancellation reason."""
-    if follow_up.status == FollowUpStatus.COMPLETED:
+    """Cancel a follow-up with explicit cancellation reason and cancel pending reminders."""
+    if isinstance(user, FollowUp):
+        target_fu = user
+        operator = actor or getattr(target_fu, "assigned_to", None)
+    else:
+        operator = user or actor
+        target_fu = follow_up or kwargs.get("target")
+
+    if not target_fu:
+        raise ValidationError({"follow_up": "A valid follow_up instance is required."})
+
+    reason_val = cancellation_reason or reason
+
+    if target_fu.status == FollowUpStatus.COMPLETED:
         raise ValidationError({"status": "Cannot cancel a completed follow-up without reopening."})
 
-    follow_up.status = FollowUpStatus.CANCELLED
-    follow_up.cancellation_reason = cancellation_reason
-    follow_up.updated_by = user if getattr(user, "is_authenticated", False) else None
-    follow_up.save()
+    target_fu.status = FollowUpStatus.CANCELLED
+    target_fu.cancellation_reason = reason_val
+    target_fu.updated_by = operator if getattr(operator, "is_authenticated", False) else None
+    target_fu.save()
+
+    # Cancel any pending reminder items
+    target_fu.reminder_items.filter(status=ReminderDeliveryStatus.PENDING).update(
+        status=ReminderDeliveryStatus.CANCELLED,
+        error_message="Cancelled on follow-up cancellation",
+        updated_at=timezone.now(),
+    )
 
     log_crm_audit(
-        user=user,
+        user=operator,
         action="FOLLOW_UP_CANCELLED",
         resource_type="FollowUp",
-        resource_id=follow_up.id,
-        changes={"cancellation_reason": cancellation_reason},
+        resource_id=target_fu.id,
+        changes={
+            "cancellation_reason": reason_val,
+        },
     )
-    return follow_up
+    return target_fu
 
 
 @transaction.atomic
@@ -488,4 +661,132 @@ def run_crm_database_reconciliation(
         "created_at": reconciliation_run.created_at.isoformat(),
         "diagnostics": diagnostics,
     }
+
+
+# ==============================================================================
+# Phase 12: Automated Follow-Up & Escalation Services
+# ==============================================================================
+
+@transaction.atomic
+def acknowledge_case_escalation(
+    user: Any,
+    escalation: CaseEscalation,
+    notes: str = "",
+) -> CaseEscalation:
+    """Acknowledge a pending case escalation by an authorized officer."""
+    if escalation.status != CaseEscalationStatus.PENDING:
+        raise ValidationError(
+            {"status": f"Cannot acknowledge an escalation in status '{escalation.status}'."}
+        )
+
+    escalation.status = CaseEscalationStatus.ACKNOWLEDGED
+    escalation.acknowledged_at = timezone.now()
+    escalation.acknowledged_by = user if getattr(user, "is_authenticated", False) else None
+    if notes:
+        escalation.resolution_notes = f"[Acknowledged Notes]: {notes}"
+    escalation.save(update_fields=["status", "acknowledged_at", "acknowledged_by", "resolution_notes", "updated_at"])
+
+    log_crm_audit(
+        user=user,
+        action="CASE_ESCALATION_ACKNOWLEDGED",
+        resource_type="CaseEscalation",
+        resource_id=escalation.id,
+        changes={
+            "status": CaseEscalationStatus.ACKNOWLEDGED,
+            "acknowledged_by": str(user.id) if getattr(user, "id", None) else None,
+            "notes": notes,
+        },
+    )
+    return escalation
+
+
+@transaction.atomic
+def resolve_case_escalation(
+    user: Any,
+    escalation: CaseEscalation,
+    resolution_notes: str,
+) -> CaseEscalation:
+    """Resolve an escalation with mandatory documented resolution notes."""
+    if not resolution_notes or len(resolution_notes.strip()) < 5:
+        raise ValidationError(
+            {"resolution_notes": "Documented resolution notes (min 5 characters) are required."}
+        )
+
+    if escalation.status in [CaseEscalationStatus.RESOLVED, CaseEscalationStatus.DISMISSED]:
+        raise ValidationError(
+            {"status": f"This escalation is already '{escalation.status}'."}
+        )
+
+    escalation.status = CaseEscalationStatus.RESOLVED
+    escalation.resolved_at = timezone.now()
+    escalation.resolved_by = user if getattr(user, "is_authenticated", False) else None
+    escalation.resolution_notes = resolution_notes.strip()
+    escalation.save(update_fields=["status", "resolved_at", "resolved_by", "resolution_notes", "updated_at"])
+
+    log_crm_audit(
+        user=user,
+        action="CASE_ESCALATION_RESOLVED",
+        resource_type="CaseEscalation",
+        resource_id=escalation.id,
+        changes={
+            "status": CaseEscalationStatus.RESOLVED,
+            "resolved_by": str(user.id) if getattr(user, "id", None) else None,
+            "resolution_notes": resolution_notes,
+        },
+    )
+    return escalation
+
+
+@transaction.atomic
+def mark_notification_as_read(
+    user: Any,
+    notification: StaffNotification,
+) -> StaffNotification:
+    """Mark an individual staff notification as read for the recipient user."""
+    if notification.recipient_id != getattr(user, "id", None) and not getattr(user, "is_superuser", False):
+        raise ValidationError({"recipient": "Cannot modify notifications belonging to another user."})
+
+    if not notification.is_read:
+        notification.is_read = True
+        notification.read_at = timezone.now()
+        notification.save(update_fields=["is_read", "read_at", "updated_at"])
+
+    return notification
+
+
+@transaction.atomic
+def mark_all_notifications_as_read(user: Any) -> int:
+    """Mark all unread notifications for a user as read."""
+    unread_qs = StaffNotification.objects.filter(recipient=user, is_read=False)
+    now = timezone.now()
+    updated_count = unread_qs.update(is_read=True, read_at=now, updated_at=now)
+    return updated_count
+
+
+@transaction.atomic
+def retry_failed_reminder_item(
+    user: Any,
+    reminder_item: FollowUpReminderItem,
+) -> FollowUpReminderItem:
+    """Manually re-queue a failed automated follow-up reminder item."""
+    if reminder_item.status not in [ReminderDeliveryStatus.FAILED, ReminderDeliveryStatus.CANCELLED]:
+        raise ValidationError(
+            {"status": f"Only failed or cancelled reminders can be re-queued (current: {reminder_item.status})."}
+        )
+
+    reminder_item.status = ReminderDeliveryStatus.PENDING
+    reminder_item.attempt_count = 0
+    reminder_item.backoff_until = None
+    reminder_item.scheduled_for = timezone.now()
+    reminder_item.error_message = f"Manually re-queued by {getattr(user, 'email', 'Staff')}."
+    reminder_item.save(update_fields=["status", "attempt_count", "backoff_until", "scheduled_for", "error_message", "updated_at"])
+
+    log_crm_audit(
+        user=user,
+        action="REMINDER_ITEM_RETRY_QUEUED",
+        resource_type="FollowUpReminderItem",
+        resource_id=reminder_item.id,
+        changes={"scheduled_for": reminder_item.scheduled_for.isoformat()},
+    )
+    return reminder_item
 

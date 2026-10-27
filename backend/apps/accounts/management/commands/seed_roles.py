@@ -13,7 +13,7 @@ ROLE_DEFINITIONS = [
         "name": "Placement Head / Director",
         "description": "Institutional sign-offs for JDs, creative banners, student eligibility overrides, and placement resume approvals.",
     },
-    {
+    { 
         "code": RoleCatalog.PLACEMENT_OFFICER,
         "name": "Placement Officer / Executive",
         "description": "Corporate outreach, 12-point JD verification, student publication, roster compilation, and interview tracking.",

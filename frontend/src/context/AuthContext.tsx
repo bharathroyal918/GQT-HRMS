@@ -13,7 +13,7 @@ interface AuthContextType {
   hasAnyRole: (roleCodes: string[]) => boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -59,8 +59,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const hasRole = useCallback(
     (roleCode: string): boolean => {
       if (!user) return false;
-      if (user.is_superuser || user.roles.includes('ADMIN')) return true;
-      return user.roles.includes(roleCode);
+      if (user.is_superuser || user.roles?.includes('ADMIN')) return true;
+      return user.roles?.includes(roleCode) ?? false;
     },
     [user]
   );
@@ -68,8 +68,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const hasAnyRole = useCallback(
     (roleCodes: string[]): boolean => {
       if (!user) return false;
-      if (user.is_superuser || user.roles.includes('ADMIN')) return true;
-      return roleCodes.some((code) => user.roles.includes(code));
+      if (user.is_superuser || user.roles?.includes('ADMIN')) return true;
+      return user.roles ? roleCodes.some((code) => user.roles.includes(code)) : false;
     },
     [user]
   );

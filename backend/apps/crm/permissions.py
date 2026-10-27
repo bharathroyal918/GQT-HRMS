@@ -162,3 +162,42 @@ class CanAccessStudent360(permissions.BasePermission):
             student_user_id = obj.user.id
         return student_user_id == request.user.id
 
+
+class CanManageCaseEscalations(permissions.BasePermission):
+    """Enforces permissions on Phase 12 case escalations."""
+
+    message = "You do not have authorization to manage case escalations."
+
+    def has_permission(self, request: Request, view: APIView) -> bool:
+        if not (request.user and request.user.is_authenticated and request.user.is_active):
+            return False
+
+        if request.user.is_superuser:
+            return True
+
+        if request.method in permissions.SAFE_METHODS:
+            return request.user.has_any_role(*CRM_MUTATING_ROLES, *CRM_READ_ONLY_ROLES)
+
+        # Mutating operations
+        return request.user.has_any_role(*CRM_MUTATING_ROLES)
+
+    def has_object_permission(self, request: Request, view: APIView, obj) -> bool:
+        if not (request.user and request.user.is_authenticated and request.user.is_active):
+            return False
+
+        if request.user.is_superuser:
+            return True
+
+        if request.method in permissions.SAFE_METHODS:
+            if request.user.has_role(RoleCatalog.AUDITOR):
+                return True
+            return request.user.has_any_role(*CRM_MUTATING_ROLES)
+
+        # Acknowledge / Resolve: ADMIN, PLACEMENT_HEAD, or the assigned officer
+        if request.user.has_any_role(RoleCatalog.ADMIN, RoleCatalog.PLACEMENT_HEAD):
+            return True
+
+        return obj.escalated_to_id == request.user.id or (
+            obj.follow_up and obj.follow_up.assigned_to_id == request.user.id
+        )
+

@@ -9,6 +9,10 @@ import {
   HRContactListItem,
   OutreachLogItem,
   PaginatedResponse,
+  CaseEscalation,
+  FollowUpReminderItem,
+  StaffNotification,
+  AutomationRunResult,
 } from '../types/crm';
 import {
   CRMDatabaseHealthReport,
@@ -183,6 +187,61 @@ export const crmApi = {
 
   async getStudentTimeline(studentId: string): Promise<{ success: boolean; data: CommunicationTimelineEvent[] }> {
     const res = await apiClient.get<{ success: boolean; data: CommunicationTimelineEvent[] }>(`/crm/students/${studentId}/timeline/`);
+    return res.data;
+  },
+
+  // Phase 12: Automated Follow-Up, Escalation & Notification Endpoints
+  async getFollowUpReminders(followUpId: string): Promise<{ success: boolean; data: FollowUpReminderItem[] }> {
+    const res = await apiClient.get<{ success: boolean; data: FollowUpReminderItem[] }>(`/crm/follow-ups/${followUpId}/reminders/`);
+    return res.data;
+  },
+
+  async retryFollowUpReminder(followUpId: string, reminderId: string): Promise<{ success: boolean; data: FollowUpReminderItem }> {
+    const res = await apiClient.post<{ success: boolean; data: FollowUpReminderItem }>(
+      `/crm/follow-ups/${followUpId}/reminders/${reminderId}/retry/`
+    );
+    return res.data;
+  },
+
+  async getEscalations(params?: Record<string, unknown>): Promise<PaginatedResponse<CaseEscalation>> {
+    const res = await apiClient.get<PaginatedResponse<CaseEscalation>>('/crm/escalations/', { params });
+    return res.data;
+  },
+
+  async acknowledgeEscalation(id: string, notes?: string): Promise<{ success: boolean; data: CaseEscalation }> {
+    const res = await apiClient.post<{ success: boolean; data: CaseEscalation }>(`/crm/escalations/${id}/acknowledge/`, { notes });
+    return res.data;
+  },
+
+  async resolveEscalation(id: string, resolutionNotes: string): Promise<{ success: boolean; data: CaseEscalation }> {
+    const res = await apiClient.post<{ success: boolean; data: CaseEscalation }>(`/crm/escalations/${id}/resolve/`, {
+      resolution_notes: resolutionNotes,
+    });
+    return res.data;
+  },
+
+  async getNotifications(params?: Record<string, unknown>): Promise<PaginatedResponse<StaffNotification>> {
+    const res = await apiClient.get<PaginatedResponse<StaffNotification>>('/crm/notifications/', { params });
+    return res.data;
+  },
+
+  async markNotificationRead(id: string): Promise<{ success: boolean; data: StaffNotification }> {
+    const res = await apiClient.post<{ success: boolean; data: StaffNotification }>(`/crm/notifications/${id}/read/`);
+    return res.data;
+  },
+
+  async markAllNotificationsRead(): Promise<{ success: boolean; count: number }> {
+    const res = await apiClient.post<{ success: boolean; count: number }>('/crm/notifications/mark-all-read/');
+    return res.data;
+  },
+
+  async getUnreadNotificationCount(): Promise<{ success: boolean; count: number }> {
+    const res = await apiClient.get<{ success: boolean; count: number }>('/crm/notifications/unread-count/');
+    return res.data;
+  },
+
+  async runAutomationCycle(dryRun: boolean = false): Promise<AutomationRunResult> {
+    const res = await apiClient.post<AutomationRunResult>('/crm/automation/run/', { dry_run: dryRun });
     return res.data;
   },
 };

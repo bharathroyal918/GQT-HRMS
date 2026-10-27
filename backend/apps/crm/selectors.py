@@ -8,15 +8,19 @@ from django.db import models
 from django.db.models import Count, F, Q, QuerySet
 from django.utils import timezone
 
+from apps.accounts.models import RoleCatalog
 from apps.crm.models import (
+    CaseEscalation,
     CRMConfiguration,
     Company,
     CompanyDomainCategory,
     CompanyRelationshipStatus,
     FollowUp,
+    FollowUpReminderItem,
     FollowUpStatus,
     HRContact,
     OutreachLog,
+    StaffNotification,
     extract_domain,
     normalize_company_name,
 )
@@ -1097,6 +1101,27 @@ def get_company_communication_timeline(company_id: Any) -> List[Dict[str, Any]]:
             "timestamp": pn.sent_at.isoformat(),
         })
 
+    # 4. Automated Follow-up Reminders (Phase 12)
+    reminders = FollowUpReminderItem.objects.filter(
+        follow_up__company_id=company_id,
+        status__in=["SENT", "SIMULATED", "DELIVERED"],
+    ).select_related("follow_up", "follow_up__assigned_to").order_by("-sent_at")[:25]
+    for r in reminders:
+        ts = r.sent_at or r.created_at
+        events.append({
+            "id": str(r.id),
+            "category": "FOLLOW_UP_REMINDER",
+            "channel": r.channel,
+            "channel_display": r.channel,
+            "direction": "OUTBOUND",
+            "subject": f"Follow-Up Reminder ({r.channel}): {r.follow_up.purpose}",
+            "summary": f"Recipient: {r.recipient}. Provider ID: {r.provider_message_id}",
+            "actor_name": r.follow_up.assigned_to.full_name if r.follow_up.assigned_to else "Follow-Up System",
+            "contact_name": None,
+            "status": r.status,
+            "timestamp": ts.isoformat(),
+        })
+
     # Sort descending by timestamp
     events.sort(key=lambda x: x["timestamp"], reverse=True)
     return events
@@ -1160,7 +1185,124 @@ def get_student_communication_timeline(student_id: Any) -> List[Dict[str, Any]]:
                 "timestamp": pub.dispatched_at.isoformat(),
             })
 
+    # 4. Automated Follow-Up Reminders (Phase 12)
+    student_reminders = FollowUpReminderItem.objects.filter(
+        follow_up__student=student,
+        status__in=["SENT", "SIMULATED", "DELIVERED"],
+    ).select_related("follow_up").order_by("-sent_at")[:25]
+    for sr in student_reminders:
+        ts = sr.sent_at or sr.created_at
+        events.append({
+            "id": str(sr.id),
+            "category": "FOLLOW_UP_REMINDER",
+            "channel": sr.channel,
+            "subject": f"Automated Follow-Up Reminder: {sr.follow_up.purpose}",
+            "summary": f"Channel: {sr.channel}. Status: {sr.status}",
+            "status": sr.status,
+            "timestamp": ts.isoformat(),
+        })
+
     # Sort descending by timestamp
     events.sort(key=lambda x: x["timestamp"], reverse=True)
     return events
+
+
+# ==============================================================================
+# Phase 12 Selectors: Escalations, Notifications & Reminders
+# ==============================================================================
+
+def get_case_escalations_queryset(
+    user: Any,
+    case_type: Optional[str] = None,
+    status: Optional[str] = None,
+    follow_up_id: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    search: Optional[str] = None,
+) -> QuerySet[CaseEscalation]:
+    """Retrieve filterable case escalations scoped by role-based access control."""
+    qs = CaseEscalation.objects.select_related(
+        "follow_up",
+        "follow_up__company",
+        "follow_up__assigned_to",
+        "escalated_to",
+        "escalated_by",
+        "previous_assigned_to",
+        "acknowledged_by",
+        "resolved_by",
+    ).order_by("-created_at")
+
+    is_admin_or_head = False
+    if hasattr(user, "has_role"):
+        is_admin_or_head = (
+            user.has_role(RoleCatalog.ADMIN)
+            or user.has_role(RoleCatalog.PLACEMENT_HEAD)
+            or user.has_role(RoleCatalog.AUDITOR)
+            or getattr(user, "is_superuser", False)
+        )
+    elif getattr(user, "is_superuser", False):
+        is_admin_or_head = True
+
+    if not is_admin_or_head:
+        qs = qs.filter(
+            Q(escalated_to=user)
+            | Q(previous_assigned_to=user)
+            | Q(follow_up__assigned_to=user)
+        )
+
+    if case_type:
+        qs = qs.filter(case_type=case_type)
+    if status:
+        qs = qs.filter(status=status)
+    if follow_up_id:
+        qs = qs.filter(follow_up_id=follow_up_id)
+    if date_from:
+        qs = qs.filter(created_at__gte=date_from)
+    if date_to:
+        qs = qs.filter(created_at__lte=date_to)
+    if search:
+        qs = qs.filter(
+            Q(reason__icontains=search)
+            | Q(follow_up__company__name__icontains=search)
+            | Q(follow_up__purpose__icontains=search)
+        )
+    return qs
+
+
+def get_staff_notifications_queryset(
+    user: Any,
+    is_read: Optional[bool] = None,
+    notification_type: Optional[str] = None,
+) -> QuerySet[StaffNotification]:
+    """Retrieve in-app notifications strictly scoped to recipient user."""
+    qs = (
+        StaffNotification.objects.filter(recipient=user)
+        .select_related("follow_up", "follow_up__company")
+        .order_by("-created_at")
+    )
+    if is_read is not None:
+        qs = qs.filter(is_read=is_read)
+    if notification_type:
+        qs = qs.filter(notification_type=notification_type)
+    return qs
+
+
+def get_follow_up_reminders_queryset(
+    follow_up_id: Optional[str] = None,
+    status: Optional[str] = None,
+    channel: Optional[str] = None,
+) -> QuerySet[FollowUpReminderItem]:
+    """Retrieve automated reminder queue records with optional filtering."""
+    qs = (
+        FollowUpReminderItem.objects.select_related(
+            "follow_up", "follow_up__company", "follow_up__assigned_to"
+        ).order_by("-scheduled_for")
+    )
+    if follow_up_id:
+        qs = qs.filter(follow_up_id=follow_up_id)
+    if status:
+        qs = qs.filter(status=status)
+    if channel:
+        qs = qs.filter(channel=channel)
+    return qs
 
