@@ -83,6 +83,7 @@ LOCAL_APPS = [
     "apps.interviews.apps.InterviewsConfig",
     "apps.placements.apps.PlacementsConfig",
     "apps.feedback.apps.FeedbackConfig",
+    "apps.analytics.apps.AnalyticsConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

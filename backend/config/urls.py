@@ -52,6 +52,9 @@ urlpatterns = [
                 # Feedback Collection (Phase 9)
                 path("feedback/", include("apps.feedback.urls")),
 
+                # Reports & Analytics (Phase 11)
+                path("reports/", include("apps.analytics.urls")),
+
                 # OpenAPI 3.1 Documentation
                 path("schema/", SpectacularAPIView.as_view(), name="schema"),
                 path(

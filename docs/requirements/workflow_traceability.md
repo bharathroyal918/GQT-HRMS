@@ -21,8 +21,8 @@
 | **Phase 7** | **Interview Tracking** | Steps 34, 35 | `apps.interviews` |
 | **Phase 8** | **Placement Management** | Steps 36, 37, 38, 39, 40, 41 | `apps.placements` |
 | **Phase 9** | **Feedback Collection** | Student, HR, and Trainer 360° Rubrics | `apps.feedback` [IMPLEMENTED & VERIFIED] |
-| **Phase 10** | **CRM Database Update** | Candidate History & Corporate Timelines | `apps.crm.sync` |
-| **Phase 11** | **Reports & Analytics** | 13-Stage Conversion Funnel & CTC Stats | `apps.analytics` |
+| **Phase 10** | **CRM Database Update** | Candidate History & Corporate Timelines | `apps.crm.sync` [IMPLEMENTED & VERIFIED] |
+| **Phase 11** | **Reports & Analytics** | 5 Categories (Company, Student, Placement, Funnel, Monthly) & Sanitized CSV | `apps.analytics` [IMPLEMENTED & VERIFIED] |
 | **Phase 12** | **Automated Follow-Up** | Overdue Escalations & Candidate Reconnection | `apps.crm.scheduler` |
 | **Phase 13** | **Continuous Improvement** | Recruiter Curriculum Gaps & Cutoff Optimization | `apps.analytics.improvement` |
 
@@ -265,8 +265,23 @@
       * `frontend/src/pages/students/StudentDirectoryPage.tsx`: 360° candidate profile modal with readiness gate, resumes, placement outcomes, and timeline.
     * Verification: Pytest suite (`backend/tests/test_crm_phase10.py` - 16 passed) + Vitest suite (`frontend/src/test/crm_phase10.test.tsx` - 5 passed).
 
-### Phases 11–13: Continuous Sync & Analytics
-* **Phase 11: Reports & Analytics:** Generate 13-stage placement conversion funnels, department average/median CTC statistics, corporate partner trends, and export authorized CSV reports.
+### Phase 11: Reports & Analytics — [STATUS: IMPLEMENTED & VERIFIED]
+* **Scope & Categorization:**
+  1. **Company Reports (`/api/v1/reports/company/`):** Drives posted, distinct candidate submissions, interviews conducted, selections, offers, confirmed joinings, selection/joining rates, min/max/average CTC, and recruiter satisfaction ratings.
+  2. **Student Reports (`/api/v1/reports/students/`):** Profile completeness, academic verification status, Step 23 Placement Readiness Certification gate, interview participation, placement outcomes, department/passing-year breakdowns, candidate feedback anonymity, and strict student self-isolation (`/api/v1/reports/students/my-summary/`).
+  3. **Placement Reports (`/api/v1/reports/placements/`):** Step 36–41 lifecycle distinctions (Final Results: SELECTED/REJECTED/WAITING_LIST/HOLD; Offer Letters: ACCEPTED/DECLINED/PENDING_RESPONSE/EXPIRED; Joining Outcomes: JOINED/NOT_JOINED/DEFERRED/PENDING_JOINING), min/max/avg/median CTC compensation metrics, and company placements table.
+  4. **Performance Funnel (`/api/v1/reports/performance/`):** Objective 10-stage recruitment conversion funnel (Applications -> Eligible -> Readiness Certified -> Dispatched -> Shortlisted -> Interviewed -> Selected -> Offers Issued -> Offers Accepted -> Joined), stage-over-stage and overall conversion rates, and overall pipeline yield with division-by-zero protection.
+  5. **Monthly Statistics (`/api/v1/reports/monthly/`):** Deterministic month-based statistics partitioned strictly by event-specific timestamps in `Asia/Kolkata` timezone, handling zero-activity months gracefully, plus 12-month annual trend array.
+  6. **Sanitized CSV Exports:** Safe CSV downloads for all 5 categories with automatic Formula Injection sanitization (`=`, `+`, `-`, `@`, `\t`, `\r` prefix escape).
+* **Architecture & Layering:**
+  * Backend: `apps.analytics` (5-layer architecture: `serializers.py`, `views.py`, `selectors.py`, `services.py`, `permissions.py`). Zero shadow tables (pure read-only aggregation layer).
+  * Frontend: `frontend/src/types/reports.ts`, `frontend/src/api/reportsApi.ts`, `frontend/src/pages/reports/ReportsHubPage.tsx` with role-aware tab routing and Auditor read-only badge.
+* **Verification Results:**
+  * Backend Pytest: 10/10 passed (`backend/tests/test_reports_phase11.py`). Total backend test suite: 272/272 passed.
+  * Frontend Vitest: 8/8 passed (`frontend/src/test/reports_phase11.test.tsx`). Total frontend test suite: 86/86 passed.
+  * Master 6-Gate Verification (`scripts/verify_dev.ps1`): 100% Passed.
+
+### Phases 12–13: Continuous Sync & Automated Engagement
 * **Phase 12: Automated Follow-Up Worker:** Run automated background jobs to escalate overdue follow-ups, trigger annual hiring cycle outreach, reconnect unselected candidates, and engage placed students before joining.
 * **Phase 13: Continuous Improvement:** Analyze recruiter feedback to identify syllabus gaps, detect recurring interview elimination rounds, refine cutoff criteria based on placement success, and compile executive annual reports.
 
