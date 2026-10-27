@@ -8,6 +8,7 @@ from apps.core.models import AuditLog
 from apps.crm.models import (
     Company,
     CompanyRelationshipStatus,
+    CRMReconciliationRun,
     FollowUp,
     FollowUpStatus,
     HRContact,
@@ -380,3 +381,111 @@ def reopen_follow_up(
         changes={"reason": reason, "new_due_date": str(new_due_date)},
     )
     return follow_up
+
+
+# ==============================================================================
+# Phase 10: CRM Database Update & Reconciliation Services
+# ==============================================================================
+
+@transaction.atomic
+def run_crm_database_reconciliation(
+    user: Any = None,
+    dry_run: bool = False,
+    correlation_id: str = "",
+) -> Dict[str, Any]:
+    """Execute Phase 10 CRM database integration & reconciliation.
+
+    1. Executes full health diagnostic across the 8 data areas.
+    2. Identifies cross-module discrepancies without destructive merging or data loss.
+    3. Safely synchronizes consistent states:
+       - Promotes companies with verified candidate selections to ACTIVE_HIRING_PARTNER.
+    4. Persists CRMReconciliationRun audit record.
+    5. Emits immutable AuditLog entry.
+    6. Returns structured summary and diagnostic payload.
+    """
+    from apps.placements.models import CandidatePlacementStatus
+    from apps.crm.selectors import get_crm_database_health_diagnostics
+
+    records_synchronized = 0
+    synchronized_companies = []
+
+    if not dry_run:
+        # Safe reconciliation rule: promote companies with verified candidate selections
+        placed_company_ids = set(
+            CandidatePlacementStatus.objects.filter(
+                status="SELECTED"
+            ).values_list("company_id", flat=True)
+        )
+        companies_to_promote = Company.objects.filter(
+            id__in=placed_company_ids,
+            is_deleted=False,
+        ).exclude(relationship_status=CompanyRelationshipStatus.ACTIVE_HIRING_PARTNER)
+
+        for comp in companies_to_promote:
+            old_status = comp.relationship_status
+            comp.relationship_status = CompanyRelationshipStatus.ACTIVE_HIRING_PARTNER
+            comp.updated_by = user if getattr(user, "is_authenticated", False) else None
+            comp.save(update_fields=["relationship_status", "updated_by", "updated_at"])
+            records_synchronized += 1
+            synchronized_companies.append({
+                "company_id": str(comp.id),
+                "name": comp.name,
+                "old_status": old_status,
+                "new_status": CompanyRelationshipStatus.ACTIVE_HIRING_PARTNER,
+            })
+
+    diagnostics = get_crm_database_health_diagnostics()
+    total_checked = diagnostics["summary"]["total_records_checked"]
+    total_conflicts = diagnostics["summary"]["total_conflicts"]
+
+    run_status = "SUCCESS" if total_conflicts == 0 else "PARTIAL_WITH_CONFLICTS"
+    mode_str = "DRY-RUN" if dry_run else "LIVE"
+    summary_text = (
+        f"Phase 10 CRM Reconciliation [{mode_str}] completed. "
+        f"Checked {total_checked} records across 8 areas. "
+        f"Synchronized {records_synchronized} records. "
+        f"Identified {total_conflicts} items requiring authorized review."
+    )
+
+    reconciliation_run = CRMReconciliationRun.objects.create(
+        triggered_by=user if getattr(user, "is_authenticated", False) else None,
+        status=run_status,
+        total_records_checked=total_checked,
+        conflicts_detected=total_conflicts,
+        records_synchronized=records_synchronized,
+        diagnostic_details={
+            **diagnostics,
+            "dry_run": dry_run,
+            "synchronized_companies": synchronized_companies,
+        },
+        summary=summary_text,
+    )
+
+    log_crm_audit(
+        user=user,
+        action="CRM_RECONCILIATION_EXECUTED",
+        resource_type="CRMReconciliationRun",
+        resource_id=reconciliation_run.id,
+        changes={
+            "dry_run": dry_run,
+            "status": run_status,
+            "total_records_checked": total_checked,
+            "conflicts_detected": total_conflicts,
+            "records_synchronized": records_synchronized,
+            "summary": summary_text,
+        },
+        correlation_id=correlation_id,
+    )
+
+    return {
+        "run_id": str(reconciliation_run.id),
+        "status": run_status,
+        "dry_run": dry_run,
+        "total_records_checked": total_checked,
+        "conflicts_detected": total_conflicts,
+        "records_synchronized": records_synchronized,
+        "summary": summary_text,
+        "created_at": reconciliation_run.created_at.isoformat(),
+        "diagnostics": diagnostics,
+    }
+

@@ -7,23 +7,44 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from django.db.models import Q
 from apps.core.pagination import StandardResultsSetPagination
-from apps.crm.models import CRMConfiguration, Company, FollowUp, HRContact, OutreachLog
-from apps.crm.permissions import IsCRMManagerOrAdmin, IsCRMStaffOrAuditor
+from apps.crm.models import (
+    CRMConfiguration,
+    Company,
+    CRMReconciliationRun,
+    FollowUp,
+    HRContact,
+    OutreachLog,
+)
+from apps.crm.permissions import (
+    CanAccessStudent360,
+    CanManageCRMReconciliation,
+    IsCRMManagerOrAdmin,
+    IsCRMStaffOrAuditor,
+)
 from apps.crm.selectors import (
     check_company_duplicates,
     check_hr_contact_duplicates,
     get_companies_queryset,
+    get_company_360_profile,
+    get_company_communication_timeline,
     get_crm_dashboard_metrics,
+    get_crm_database_health_diagnostics,
     get_follow_ups_queryset,
     get_hr_contacts_queryset,
     get_outreach_logs_queryset,
+    get_student_360_profile,
+    get_student_communication_timeline,
 )
 from apps.crm.serializers import (
     CompanyCreateUpdateSerializer,
     CompanyDetailSerializer,
     CompanyDuplicateCheckSerializer,
     CompanyListSerializer,
+    CRMDatabaseHealthSerializer,
+    CRMReconciliationRunSerializer,
+    CRMReconciliationSyncRequestSerializer,
     FollowUpCancelSerializer,
     FollowUpCompleteSerializer,
     FollowUpCreateSerializer,
@@ -48,10 +69,12 @@ from apps.crm.services import (
     reschedule_follow_up,
     restore_company,
     restore_hr_contact,
+    run_crm_database_reconciliation,
     schedule_follow_up,
     update_company,
     update_hr_contact,
 )
+
 
 
 @extend_schema_view(
@@ -162,6 +185,21 @@ class CompanyViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = FollowUpSerializer(follow_ups_qs, many=True)
         return Response({"success": True, "data": serializer.data})
+
+    @extend_schema(summary="Retrieve 360-degree recruitment integration profile for company")
+    @action(detail=True, methods=["get"], url_path="360")
+    def profile_360(self, request: Request, pk=None) -> Response:
+        company = self.get_object()
+        data = get_company_360_profile(company.id)
+        return Response({"success": True, "data": data})
+
+    @extend_schema(summary="Retrieve chronological communication timeline for company")
+    @action(detail=True, methods=["get"], url_path="timeline")
+    def timeline(self, request: Request, pk=None) -> Response:
+        company = self.get_object()
+        events = get_company_communication_timeline(company.id)
+        return Response({"success": True, "data": events})
+
 
 
 @extend_schema_view(
@@ -415,3 +453,94 @@ class CRMConfigurationView(APIView):
             defaults={"value": str(value)},
         )
         return Response({"success": True, "data": {"key": config.key, "value": config.value}})
+
+
+# ==============================================================================
+# Phase 10: CRM Database Integration & Reconciliation Views
+# ==============================================================================
+
+class CRMReconciliationDiagnosticsView(APIView):
+    """Retrieve 8-area database health diagnostics without modifying any data."""
+
+    permission_classes = [CanManageCRMReconciliation]
+
+    @extend_schema(summary="Audit 8-area CRM database health diagnostics")
+    def get(self, request: Request) -> Response:
+        report = get_crm_database_health_diagnostics()
+        return Response({"success": True, "data": report})
+
+
+class CRMReconciliationSyncView(APIView):
+    """Execute safe, idempotent CRM database integration and reconciliation."""
+
+    permission_classes = [CanManageCRMReconciliation]
+
+    @extend_schema(summary="Run CRM database reconciliation")
+    def post(self, request: Request) -> Response:
+        serializer = CRMReconciliationSyncRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        dry_run = serializer.validated_data.get("dry_run", False)
+        correlation_id = request.headers.get("X-Correlation-ID", "")
+        result = run_crm_database_reconciliation(
+            user=request.user,
+            dry_run=dry_run,
+            correlation_id=correlation_id,
+        )
+        return Response({"success": True, "data": result})
+
+
+class CRMReconciliationHistoryView(APIView):
+    """List historical audit records of CRM database reconciliation runs."""
+
+    permission_classes = [CanManageCRMReconciliation]
+
+    @extend_schema(summary="List CRM database reconciliation runs")
+    def get(self, request: Request) -> Response:
+        runs = CRMReconciliationRun.objects.select_related("triggered_by").order_by("-created_at")[:50]
+        serializer = CRMReconciliationRunSerializer(runs, many=True)
+        return Response({"success": True, "data": serializer.data})
+
+
+class Student360View(APIView):
+    """Retrieve 360-degree candidate profile integrating recruitment history."""
+
+    permission_classes = [CanAccessStudent360]
+
+    @extend_schema(summary="Retrieve 360-degree candidate profile")
+    def get(self, request: Request, student_id: Any) -> Response:
+        from apps.students.models import StudentProfile
+
+        student = StudentProfile.objects.filter(
+            Q(id=student_id) | Q(user_id=student_id), is_deleted=False
+        ).select_related("user").first()
+        if not student:
+            return Response(
+                {"success": False, "error": {"message": "Student profile not found."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        self.check_object_permissions(request, student)
+        profile = get_student_360_profile(student.id, viewer_user=request.user)
+        return Response({"success": True, "data": profile})
+
+
+class StudentTimelineView(APIView):
+    """Retrieve chronological communication history for candidate."""
+
+    permission_classes = [CanAccessStudent360]
+
+    @extend_schema(summary="Retrieve candidate communication history")
+    def get(self, request: Request, student_id: Any) -> Response:
+        from apps.students.models import StudentProfile
+
+        student = StudentProfile.objects.filter(
+            Q(id=student_id) | Q(user_id=student_id), is_deleted=False
+        ).select_related("user").first()
+        if not student:
+            return Response(
+                {"success": False, "error": {"message": "Student profile not found."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        self.check_object_permissions(request, student)
+        events = get_student_communication_timeline(student.id)
+        return Response({"success": True, "data": events})
+

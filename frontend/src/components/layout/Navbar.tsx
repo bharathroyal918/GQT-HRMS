@@ -61,6 +61,7 @@ export const Navbar: React.FC = () => {
           { name: 'Contacts', href: '/crm/contacts', icon: Users },
           { name: 'Outreach', href: '/crm/outreach', icon: PhoneCall },
           { name: 'Follow-ups', href: '/crm/follow-ups', icon: Calendar },
+          { name: 'Reconciliation', href: '/crm/reconciliation', icon: Activity },
         ]
       : []),
     ...(canAccessJobs

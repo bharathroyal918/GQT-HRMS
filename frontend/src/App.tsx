@@ -21,6 +21,7 @@ import { ContactFormPage } from './pages/crm/ContactFormPage';
 import { OutreachPage } from './pages/crm/OutreachPage';
 import { OutreachFormPage } from './pages/crm/OutreachFormPage';
 import { FollowUpsPage } from './pages/crm/FollowUpsPage';
+import { CrmReconciliationPage } from './pages/crm/CrmReconciliationPage';
 import { JobDirectoryPage } from './pages/jobs/JobDirectoryPage';
 import { JobFormPage } from './pages/jobs/JobFormPage';
 import { JobDetailPage } from './pages/jobs/JobDetailPage';
@@ -159,6 +160,14 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute requiredRoles={CRM_ROLES}>
                     <FollowUpsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="crm/reconciliation"
+                element={
+                  <ProtectedRoute requiredRoles={CRM_ROLES}>
+                    <CrmReconciliationPage />
                   </ProtectedRoute>
                 }
               />

@@ -83,3 +83,82 @@ class IsCRMManagerOrAdmin(permissions.BasePermission):
             request.user.is_superuser
             or request.user.has_any_role(RoleCatalog.ADMIN, RoleCatalog.PLACEMENT_HEAD)
         )
+
+
+class CanManageCRMReconciliation(permissions.BasePermission):
+    """Authorizes viewing diagnostics (Staff + Auditor) and executing reconciliation (Staff only)."""
+
+    message = "You do not have permission to manage CRM database reconciliation."
+
+    def has_permission(self, request: Request, view: APIView) -> bool:
+        if not (request.user and request.user.is_authenticated and request.user.is_active):
+            return False
+
+        if request.user.is_superuser:
+            return True
+
+        if request.method in permissions.SAFE_METHODS:
+            return request.user.has_any_role(
+                RoleCatalog.ADMIN,
+                RoleCatalog.PLACEMENT_HEAD,
+                RoleCatalog.PLACEMENT_OFFICER,
+                RoleCatalog.AUDITOR,
+            )
+
+        # Mutating operations (POST sync)
+        if request.user.has_role(RoleCatalog.AUDITOR):
+            self.message = "Auditors hold read-only privileges and cannot execute database reconciliation."
+            return False
+
+        return request.user.has_any_role(
+            RoleCatalog.ADMIN,
+            RoleCatalog.PLACEMENT_HEAD,
+            RoleCatalog.PLACEMENT_OFFICER,
+        )
+
+
+class CanAccessStudent360(permissions.BasePermission):
+    """Ensures staff and auditors can inspect any student 360 profile, while students can only view their own."""
+
+    message = "You do not have authorization to view this candidate 360 profile."
+
+    def has_permission(self, request: Request, view: APIView) -> bool:
+        if not (request.user and request.user.is_authenticated and request.user.is_active):
+            return False
+
+        if request.user.is_superuser:
+            return True
+
+        return request.user.has_any_role(
+            RoleCatalog.ADMIN,
+            RoleCatalog.PLACEMENT_HEAD,
+            RoleCatalog.PLACEMENT_OFFICER,
+            RoleCatalog.AUDITOR,
+            RoleCatalog.HR_RELATIONSHIP_MGR,
+            RoleCatalog.TRAINER,
+            RoleCatalog.STUDENT,
+        )
+
+    def has_object_permission(self, request: Request, view: APIView, obj) -> bool:
+        if not (request.user and request.user.is_authenticated and request.user.is_active):
+            return False
+
+        if request.user.is_superuser:
+            return True
+
+        if request.user.has_any_role(
+            RoleCatalog.ADMIN,
+            RoleCatalog.PLACEMENT_HEAD,
+            RoleCatalog.PLACEMENT_OFFICER,
+            RoleCatalog.AUDITOR,
+            RoleCatalog.HR_RELATIONSHIP_MGR,
+            RoleCatalog.TRAINER,
+        ):
+            return True
+
+        # Student ownership check
+        student_user_id = getattr(obj, "user_id", None) or (obj.get("student", {}).get("user_id") if isinstance(obj, dict) else None)
+        if not student_user_id and hasattr(obj, "user"):
+            student_user_id = obj.user.id
+        return student_user_id == request.user.id
+

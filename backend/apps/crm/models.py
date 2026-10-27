@@ -522,3 +522,61 @@ class CRMConfiguration(models.Model):
 
     def __str__(self) -> str:
         return f"{self.key} = {self.value}"
+
+
+class CRMReconciliationRun(TimeStampedModel):
+    """Immutable audit record of Phase 10 CRM database integration and reconciliation runs."""
+
+    triggered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="crm_reconciliation_runs",
+        help_text="User who initiated this reconciliation run.",
+    )
+    status = models.CharField(
+        max_length=32,
+        choices=(
+            ("SUCCESS", "Success — All Records Consistent"),
+            ("PARTIAL_WITH_CONFLICTS", "Completed — Conflicts Identified"),
+            ("FAILED", "Reconciliation Failed"),
+        ),
+        default="SUCCESS",
+        db_index=True,
+    )
+    total_records_checked = models.PositiveIntegerField(
+        default=0,
+        help_text="Total domain records evaluated across the 8 CRM data areas.",
+    )
+    conflicts_detected = models.PositiveIntegerField(
+        default=0,
+        help_text="Total integrity warnings or discrepancies flagged.",
+    )
+    records_synchronized = models.PositiveIntegerField(
+        default=0,
+        help_text="Total records reconciled or updated.",
+    )
+    diagnostic_details = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Structured breakdown of diagnostic findings across all 8 data areas.",
+    )
+    summary = models.TextField(
+        blank=True,
+        default="",
+        help_text="Operational summary narrative of the reconciliation run.",
+    )
+
+    class Meta:
+        db_table = "crm_reconciliation_run"
+        ordering = ["-created_at"]
+        verbose_name = "CRM Reconciliation Run"
+        verbose_name_plural = "CRM Reconciliation Runs"
+        indexes = [
+            models.Index(fields=["status", "-created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"CRM Reconciliation on {self.created_at.strftime('%Y-%m-%d %H:%M')} [{self.status}]"
+

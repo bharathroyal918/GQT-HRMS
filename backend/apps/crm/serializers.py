@@ -8,6 +8,7 @@ from apps.crm.models import (
     CompanyDomainCategory,
     CompanyRelationshipStatus,
     CompanyTier,
+    CRMReconciliationRun,
     FollowUp,
     FollowUpPriority,
     FollowUpStatus,
@@ -419,3 +420,101 @@ class FollowUpReopenSerializer(serializers.Serializer):
 
     new_due_date = serializers.DateTimeField(required=True)
     reason = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+
+
+# ==============================================================================
+# Phase 10: CRM Database Integration Serializers
+# ==============================================================================
+
+class CRMReconciliationRunSerializer(serializers.ModelSerializer):
+    """Audit serializer for CRM reconciliation history runs."""
+
+    triggered_by_name = serializers.CharField(
+        source="triggered_by.full_name", read_only=True, default="System"
+    )
+    triggered_by_email = serializers.CharField(
+        source="triggered_by.email", read_only=True, default=""
+    )
+
+    class Meta:
+        model = CRMReconciliationRun
+        fields = [
+            "id",
+            "triggered_by",
+            "triggered_by_name",
+            "triggered_by_email",
+            "status",
+            "total_records_checked",
+            "conflicts_detected",
+            "records_synchronized",
+            "diagnostic_details",
+            "summary",
+            "created_at",
+        ]
+
+
+class CRMReconciliationSyncRequestSerializer(serializers.Serializer):
+    """Input parameters for triggering a database reconciliation run."""
+
+    dry_run = serializers.BooleanField(
+        default=False,
+        required=False,
+        help_text="If True, performs diagnostic audit and previews changes without persisting.",
+    )
+
+
+class CRMConflictSerializer(serializers.Serializer):
+    """Structured representation of a cross-module data conflict."""
+
+    area = serializers.CharField()
+    severity = serializers.ChoiceField(choices=["CRITICAL", "WARNING", "INFO"])
+    resource_type = serializers.CharField()
+    resource_id = serializers.CharField()
+    description = serializers.CharField()
+    recommended_action = serializers.CharField()
+
+
+class CRMDatabaseHealthSummarySerializer(serializers.Serializer):
+    """Aggregate health score and high-level totals."""
+
+    total_records_checked = serializers.IntegerField()
+    total_consistent_records = serializers.IntegerField()
+    total_conflicts = serializers.IntegerField()
+    health_score_percentage = serializers.FloatField()
+    status = serializers.CharField()
+    as_of = serializers.CharField()
+
+
+class CRMDatabaseHealthAreaSerializer(serializers.Serializer):
+    """Per-area health diagnostic status."""
+
+    name = serializers.CharField()
+    total = serializers.IntegerField()
+    consistent = serializers.IntegerField()
+    conflicts = serializers.IntegerField()
+    status = serializers.CharField()
+
+
+class CRMDatabaseHealthSerializer(serializers.Serializer):
+    """Complete 8-area database health diagnostic report."""
+
+    summary = CRMDatabaseHealthSummarySerializer()
+    areas = serializers.DictField(child=CRMDatabaseHealthAreaSerializer())
+    conflicts = CRMConflictSerializer(many=True)
+
+
+class CommunicationTimelineItemSerializer(serializers.Serializer):
+    """Unified representation of a communication event across channels."""
+
+    id = serializers.CharField()
+    category = serializers.CharField()
+    channel = serializers.CharField()
+    channel_display = serializers.CharField(required=False, allow_null=True)
+    direction = serializers.CharField()
+    subject = serializers.CharField()
+    summary = serializers.CharField()
+    actor_name = serializers.CharField(allow_null=True)
+    contact_name = serializers.CharField(required=False, allow_null=True)
+    status = serializers.CharField()
+    timestamp = serializers.CharField()
+

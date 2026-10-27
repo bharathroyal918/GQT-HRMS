@@ -1,6 +1,6 @@
 # GQT HRMS & Recruitment CRM Platform
 
-> **Status:** Phase 9 (Feedback Collection — Student, HR, Trainer) Complete & Verified<br>
+> **Status:** Phase 10 (CRM Database Update — 8-Area Integration & Safe Reconciliation) Complete & Verified<br>
 > **Source of Truth:** `docs/requirements/workflow_traceability.md` (13 Business Phases, 41 Operational Steps, 19 CRM Modules, 8 AI Capabilities)  
 > **Role & Permission Matrix:** `docs/security/role_permission_matrix.md` (9 Operational Roles, Deny-by-Default, Object-Level Ownership)  
 > **Target Database:** Supabase-hosted PostgreSQL 16 Engine with SSL  
@@ -25,9 +25,10 @@
 | **Interview Management Subsystem** | Shortlists, Schedules, Notifications, Reminders, Rounds, Follow-ups | `apps.interviews` module covering Steps 29–35 with corporate HR shortlist intake, multi-channel scheduling (Online/In-person/Hybrid), 5 authoritative notification fields, idempotent automatic reminders (24h, 2h, 30m), attendance confirmation, interview execution outcomes, 5-category round tracking (Aptitude, Coding, Technical, HR, Managerial) with student notes isolation, and corporate HR follow-up metrics |
 | **Placement Management Subsystem** | Final Results, Status Transitions, Notifications, Offer Letters, Acceptance, Joining | `apps.placements` module covering Steps 36–41 with corporate final result intake, 4 candidate statuses (Selected, Rejected, Waiting List, Hold), student notifications, secure private PDF offer letter upload with magic-bytes & SHA-256 validation, offer acceptance lifecycle (Pending, Accepted, Declined, Expired), and joining verification (Joined, Not Joined, Deferred) |
 | **Feedback Collection Subsystem** | Student Experiences, Corporate HR Evaluations, Trainer Readiness Rubrics | `apps.feedback` module covering Student Interview Experiences (narrative, questions, difficulty, suggestions, anonymity), Corporate HR Evaluations (candidate quality, 1–5 star ratings for tech, comms, satisfaction, remarks), and Trainer Feedback (readiness levels, training effectiveness, and actionable improvement areas) |
+| **CRM Integration & Reconciliation Subsystem** | 8-Domain Consistency Scan, Idempotent Reconciliation, 360° Profiles, Unified Timelines | `apps.crm` module covering 8 domain areas (Companies, HR Contacts, Candidates, Resumes, Interviews, Placements, Feedback, and Timelines), non-destructive conflict detection, active hiring partner promotion, and immutable reconciliation audit runs |
 | **Database** | Supabase PostgreSQL 16 via `psycopg` (v3) | SSL connection (`sslmode=require`), UUIDv4 primary keys, normalized case-insensitive email uniqueness, transactional operations |
 | **Security** | Argon2id, Fail-Closed Config, Log Redaction | Server-side validation, `SensitiveDataFilter` redacting secrets in logs, request correlation IDs (`X-Correlation-ID`) |
-| **Testing** | pytest-django, Vitest | 246 backend unit/integration tests, 73 frontend component/route tests (319 total automated tests), strict TypeScript checks |
+| **Testing** | pytest-django, Vitest | 262 backend automated tests (including 16 Phase 10 tests), 78 frontend component/route tests (340 total automated tests), strict TypeScript checks |
 
 
 

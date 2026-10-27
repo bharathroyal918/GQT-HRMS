@@ -602,7 +602,7 @@ def test_11_notify_student_success_step_30(db, shortlisted_candidate_fixture, pl
 
 def test_12_process_due_reminders_idempotent_step_31(db, shortlisted_candidate_fixture, placement_officer):
     """Step 31: Process due reminders idempotently without duplicate sends."""
-    target_date = timezone.localdate() + timedelta(days=1)
+    target_date = timezone.localdate() + timedelta(days=2)
     schedule = services.create_interview_schedule(
         candidate_id=str(shortlisted_candidate_fixture.id),
         interview_date=target_date,

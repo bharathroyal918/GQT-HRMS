@@ -10,6 +10,14 @@ import {
   OutreachLogItem,
   PaginatedResponse,
 } from '../types/crm';
+import {
+  CRMDatabaseHealthReport,
+  CRMReconciliationRun,
+  CRMReconciliationSyncResponse,
+  CommunicationTimelineEvent,
+  Company360Profile,
+  Student360Profile,
+} from '../types/crmIntegration';
 
 export const crmApi = {
   // Companies
@@ -139,6 +147,42 @@ export const crmApi = {
       '/crm/dashboard/metrics/',
       { params: timezone ? { timezone } : {} }
     );
+    return res.data;
+  },
+
+  // Phase 10: CRM Database Integration & Reconciliation
+  async getReconciliationDiagnostics(): Promise<{ success: boolean; data: CRMDatabaseHealthReport }> {
+    const res = await apiClient.get<{ success: boolean; data: CRMDatabaseHealthReport }>('/crm/reconciliation/diagnostics/');
+    return res.data;
+  },
+
+  async runReconciliationSync(dryRun: boolean = false): Promise<CRMReconciliationSyncResponse> {
+    const res = await apiClient.post<CRMReconciliationSyncResponse>('/crm/reconciliation/sync/', { dry_run: dryRun });
+    return res.data;
+  },
+
+  async getReconciliationHistory(): Promise<{ success: boolean; data: CRMReconciliationRun[] }> {
+    const res = await apiClient.get<{ success: boolean; data: CRMReconciliationRun[] }>('/crm/reconciliation/history/');
+    return res.data;
+  },
+
+  async getCompany360(companyId: string): Promise<{ success: boolean; data: Company360Profile }> {
+    const res = await apiClient.get<{ success: boolean; data: Company360Profile }>(`/crm/companies/${companyId}/360/`);
+    return res.data;
+  },
+
+  async getCompanyTimeline(companyId: string): Promise<{ success: boolean; data: CommunicationTimelineEvent[] }> {
+    const res = await apiClient.get<{ success: boolean; data: CommunicationTimelineEvent[] }>(`/crm/companies/${companyId}/timeline/`);
+    return res.data;
+  },
+
+  async getStudent360(studentId: string): Promise<{ success: boolean; data: Student360Profile }> {
+    const res = await apiClient.get<{ success: boolean; data: Student360Profile }>(`/crm/students/${studentId}/360/`);
+    return res.data;
+  },
+
+  async getStudentTimeline(studentId: string): Promise<{ success: boolean; data: CommunicationTimelineEvent[] }> {
+    const res = await apiClient.get<{ success: boolean; data: CommunicationTimelineEvent[] }>(`/crm/students/${studentId}/timeline/`);
     return res.data;
   },
 };
