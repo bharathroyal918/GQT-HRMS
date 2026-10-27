@@ -80,7 +80,7 @@ Pop-Location
 
 Write-Host '`n==========================================================' -ForegroundColor Cyan
 if ($TotalFailures -eq 0) {
-    Write-Host ' ALL CHECKS PASSED: GQT HRMS Phase 8 (Placement Management — Steps 36–41) Verified!' -ForegroundColor Green
+    Write-Host ' ALL CHECKS PASSED: GQT HRMS Phase 9 (Feedback Collection — Categories A, B, C) Verified!' -ForegroundColor Green
 } else {
     Write-Host " VERIFICATION FAILED: $TotalFailures check(s) did not pass." -ForegroundColor Red
 }

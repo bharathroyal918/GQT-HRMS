@@ -49,6 +49,9 @@ urlpatterns = [
                 # Placement Management & Tracking (Phase 8 / Steps 36-41)
                 path("placements/", include("apps.placements.urls")),
 
+                # Feedback Collection (Phase 9)
+                path("feedback/", include("apps.feedback.urls")),
+
                 # OpenAPI 3.1 Documentation
                 path("schema/", SpectacularAPIView.as_view(), name="schema"),
                 path(

@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Send,
   Award,
+  MessageSquare,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -97,6 +98,9 @@ export const Navbar: React.FC = () => {
       : []),
     ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'STUDENT', 'AUDITOR'])
       ? [{ name: 'Placements', href: '/placements', icon: Award }]
+      : []),
+    ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'EVALUATOR', 'TRAINER', 'STUDENT', 'AUDITOR'])
+      ? [{ name: 'Feedback', href: '/feedback', icon: MessageSquare }]
       : []),
     ...(hasRole('ADMIN') ? [{ name: 'Diagnostics', href: '/diagnostics', icon: Activity }] : []),
   ];

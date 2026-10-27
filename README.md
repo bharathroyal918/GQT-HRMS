@@ -1,6 +1,6 @@
 # GQT HRMS & Recruitment CRM Platform
 
-> **Status:** Phase 8 (Placement Management — Steps 36–41) Complete & Verified  
+> **Status:** Phase 9 (Feedback Collection — Student, HR, Trainer) Complete & Verified<br>
 > **Source of Truth:** `docs/requirements/workflow_traceability.md` (13 Business Phases, 41 Operational Steps, 19 CRM Modules, 8 AI Capabilities)  
 > **Role & Permission Matrix:** `docs/security/role_permission_matrix.md` (9 Operational Roles, Deny-by-Default, Object-Level Ownership)  
 > **Target Database:** Supabase-hosted PostgreSQL 16 Engine with SSL  
@@ -24,9 +24,10 @@
 | **Submissions & Dispatch Subsystem** | Candidate List, Master Excel, Resume Bundles, Dispatch, Ack | `apps.submissions` module covering Steps 24–28 with candidate roster assembly, master Excel spreadsheet generation with SHA-256 fingerprint, certified PDF resume attachments, corporate HR transmission logging, and recruiter receipt acknowledgment |
 | **Interview Management Subsystem** | Shortlists, Schedules, Notifications, Reminders, Rounds, Follow-ups | `apps.interviews` module covering Steps 29–35 with corporate HR shortlist intake, multi-channel scheduling (Online/In-person/Hybrid), 5 authoritative notification fields, idempotent automatic reminders (24h, 2h, 30m), attendance confirmation, interview execution outcomes, 5-category round tracking (Aptitude, Coding, Technical, HR, Managerial) with student notes isolation, and corporate HR follow-up metrics |
 | **Placement Management Subsystem** | Final Results, Status Transitions, Notifications, Offer Letters, Acceptance, Joining | `apps.placements` module covering Steps 36–41 with corporate final result intake, 4 candidate statuses (Selected, Rejected, Waiting List, Hold), student notifications, secure private PDF offer letter upload with magic-bytes & SHA-256 validation, offer acceptance lifecycle (Pending, Accepted, Declined, Expired), and joining verification (Joined, Not Joined, Deferred) |
+| **Feedback Collection Subsystem** | Student Experiences, Corporate HR Evaluations, Trainer Readiness Rubrics | `apps.feedback` module covering Student Interview Experiences (narrative, questions, difficulty, suggestions, anonymity), Corporate HR Evaluations (candidate quality, 1–5 star ratings for tech, comms, satisfaction, remarks), and Trainer Feedback (readiness levels, training effectiveness, and actionable improvement areas) |
 | **Database** | Supabase PostgreSQL 16 via `psycopg` (v3) | SSL connection (`sslmode=require`), UUIDv4 primary keys, normalized case-insensitive email uniqueness, transactional operations |
 | **Security** | Argon2id, Fail-Closed Config, Log Redaction | Server-side validation, `SensitiveDataFilter` redacting secrets in logs, request correlation IDs (`X-Correlation-ID`) |
-| **Testing** | pytest-django, Vitest | 224 backend unit/integration tests, 64 frontend component/route tests (288 total automated tests), strict TypeScript checks |
+| **Testing** | pytest-django, Vitest | 246 backend unit/integration tests, 73 frontend component/route tests (319 total automated tests), strict TypeScript checks |
 
 
 

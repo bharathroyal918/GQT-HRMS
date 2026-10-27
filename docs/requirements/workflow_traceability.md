@@ -20,7 +20,7 @@
 | **Phase 6** | **Interview Management** | Steps 29, 30, 31, 32, 33 | `apps.interviews` |
 | **Phase 7** | **Interview Tracking** | Steps 34, 35 | `apps.interviews` |
 | **Phase 8** | **Placement Management** | Steps 36, 37, 38, 39, 40, 41 | `apps.placements` |
-| **Phase 9** | **Feedback Collection** | Student, HR, and Trainer 360° Rubrics | `apps.feedback` |
+| **Phase 9** | **Feedback Collection** | Student, HR, and Trainer 360° Rubrics | `apps.feedback` [IMPLEMENTED & VERIFIED] |
 | **Phase 10** | **CRM Database Update** | Candidate History & Corporate Timelines | `apps.crm.sync` |
 | **Phase 11** | **Reports & Analytics** | 13-Stage Conversion Funnel & CTC Stats | `apps.analytics` |
 | **Phase 12** | **Automated Follow-Up** | Overdue Escalations & Candidate Reconnection | `apps.crm.scheduler` |
@@ -200,8 +200,40 @@
   * *Business Requirement:* Authoritative joining verification: `JOINED`, `NOT_JOINED`, `DEFERRED`. Strict separation of offer acceptance from actual joining (accepted offer transitions to `PENDING_JOINING`, not `JOINED`). Requires revised date or reason on deferral. Logs durable `JoiningStatusHistory`.
   * *Implementation:* `apps.placements.models.JoiningStatusHistory`, `apps.placements.services.verify_candidate_joining`, and `/api/v1/placements/offers/<id>/verify-joining/`.
 
-### Phases 9–13: Continuous Feedback, Sync & Analytics
-* **Phase 9: Feedback Collection:** Collect 360-degree feedback across students (difficulty, questions asked), HR recruiters, and trainers.
+### Phase 9: Feedback Collection [IMPLEMENTED & VERIFIED]
+* **Category A: Student Feedback [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Collect candidate interview experience narrative, technical questions asked, interview difficulty rating (`EASY`, `MEDIUM`, `HARD`, `VERY_HARD`), and actionable suggestions for junior batches. Supports candidate anonymity toggle (`is_anonymous`) that masks candidate identity for peer/corporate views while preserving administrator moderation. Associated with student, company, job requirement, and interview schedule.
+  * *Implementation:*
+    * Model: `apps.feedback.models.StudentFeedback` with `DifficultyLevel` choices, `student_profile` FK, `company` FK, `job_requirement` FK, `interview_schedule` FK, `is_anonymous` boolean.
+    * Service: `apps.feedback.services.submit_student_feedback` (validates student profile, checks duplicate submissions for same schedule, creates transactional audit log without leaking sensitive text).
+    * Selector: `apps.feedback.selectors.get_student_feedback_queryset` (enforces student-level isolation; students view only their own submissions; staff/admin view authorized scoped records).
+    * Serializer: `apps.feedback.serializers.StudentFeedbackSerializer` (masks name as "Anonymous Candidate" and roll number as "ANONYMOUS" when `is_anonymous=True` for non-admin viewers).
+    * Endpoints: `GET /api/v1/feedback/student/`, `POST /api/v1/feedback/student/`, `GET /api/v1/feedback/student/<id>/`, `PATCH /api/v1/feedback/student/<id>/`, `GET /api/v1/feedback/student-eligible-drives/`.
+    * Permissions: `IsStudentOrStaffForStudentFeedback`.
+    * Frontend: Accessible form with eligible drive auto-selector, difficulty radio/select, expandable experience/questions textareas, and anonymous submission checkbox.
+    * Verification: Pytest suite (`backend/tests/test_feedback.py`) + Vitest suite (`frontend/src/test/feedback.test.tsx`).
+* **Category B: Corporate HR Feedback [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Ingest recruiter hiring evaluations across candidate quality (`POOR`, `FAIR`, `GOOD`, `EXCELLENT`), 1–5 integer rating scales with remarks for Technical Skills, Communication Skills, and Overall Hiring Satisfaction. Scoped strictly to authorized corporate companies, HR contacts, and evaluated candidates/cohorts.
+  * *Implementation:*
+    * Model: `apps.feedback.models.HRFeedback` with `CandidateQuality` choices, rating validators (`MinValueValidator(1)`, `MaxValueValidator(5)`), `company` FK, `hr_contact` FK, `candidate` FK, `job_requirement` FK.
+    * Service: `apps.feedback.services.submit_hr_feedback` (validates company scoping, validates HR relationship manager assignment, writes transactional audit trail).
+    * Selector: `apps.feedback.selectors.get_hr_feedback_queryset` (enforces company-level scoping; HR Relationship Managers restricted to their assigned companies; students/trainers denied with 403 Forbidden).
+    * Endpoints: `GET /api/v1/feedback/hr/`, `POST /api/v1/feedback/hr/`, `GET /api/v1/feedback/hr/<id>/`, `PATCH /api/v1/feedback/hr/<id>/`.
+    * Permissions: `CanManageHRFeedback`.
+    * Frontend: Recruiter evaluation workspace with star rating displays, quality badges, and evaluation submission modal.
+    * Verification: Pytest suite (`backend/tests/test_feedback.py`) + Vitest suite (`frontend/src/test/feedback.test.tsx`).
+* **Category C: Trainer Feedback [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Collect institutional trainer readiness evaluations across student readiness level (`NOT_READY`, `NEEDS_PRACTICE`, `READY`, `HIGHLY_READY`), training effectiveness rating (1–5 scale with remarks), and concrete areas for improvement (minimum 10 characters). Scoped to authorized trainers and assigned students/sessions; strictly prevents trainer access to confidential corporate HR feedback.
+  * *Implementation:*
+    * Model: `apps.feedback.models.TrainerFeedback` with `StudentReadiness` choices, `student` FK, `trainer` FK (`settings.AUTH_USER_MODEL`), `training_session` FK, `training_effectiveness_rating` (1–5), `areas_for_improvement` (min 10 chars).
+    * Service: `apps.feedback.services.submit_trainer_feedback` (validates student profile, validates trainer assignment, records audit log).
+    * Selector: `apps.feedback.selectors.get_trainer_feedback_queryset` (enforces trainer assignment isolation; trainers view only their submissions; students denied with 403 Forbidden).
+    * Endpoints: `GET /api/v1/feedback/trainer/`, `POST /api/v1/feedback/trainer/`, `GET /api/v1/feedback/trainer/<id>/`, `PATCH /api/v1/feedback/trainer/<id>/`, `GET /api/v1/feedback/summary/`.
+    * Permissions: `CanManageTrainerFeedback`.
+    * Frontend: Trainer readiness roster with readiness badges, effectiveness star ratings, areas for improvement text, and evaluation modal.
+    * Verification: Pytest suite (`backend/tests/test_feedback.py`) + Vitest suite (`frontend/src/test/feedback.test.tsx`).
+
+### Phases 10–13: Continuous Sync & Analytics
 * **Phase 10: CRM Database Update:** Automatically sync candidate placement state into CRM profiles, compute company lifetime hiring metrics, maintain chronological interaction timelines, and archive completed drives.
 * **Phase 11: Reports & Analytics:** Generate 13-stage placement conversion funnels, department average/median CTC statistics, corporate partner trends, and export authorized CSV reports.
 * **Phase 12: Automated Follow-Up Worker:** Run automated background jobs to escalate overdue follow-ups, trigger annual hiring cycle outreach, reconnect unselected candidates, and engage placed students before joining.
