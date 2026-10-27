@@ -180,13 +180,25 @@
   * *Business Requirement:* Maintain structured follow-up tracking with corporate HR for 3 authoritative metrics: `candidate_status_reported`, `pending_rounds`, and `expected_result_date` (confirmed vs tentative), with callback queueing via `next_follow_up_date`.
   * *Implementation:* `apps.interviews.models.HRInterviewFollowUp`, `apps.interviews.services.record_hr_follow_up`, and `/api/v1/interviews/follow-ups/`.
 
-### Phase 8: Placement Management (Steps 36–41)
-* **Step 36: Receive Final Results:** Ingest hiring outcomes from HR (`SELECTED`, `REJECTED`, `WAITING_LIST`, `ON_HOLD`).
-* **Step 37: Update Candidate Status:** Atomically update student application status and student profile placement state.
-* **Step 38: Notify Students:** Notify placed and unselected candidates with official congratulatory / rejection advisories.
-* **Step 39: Upload Offer Letter:** Upload official offer letter with magic-bytes validation (`%PDF-`, SHA-256, 5MB limit).
-* **Step 40: Track Offer Acceptance & Single-Job Policy:** Enforce Single-Job Placement Policy: accepting offer auto-withdraws competing applications using `select_for_update()` row locking.
-* **Step 41: Track Joining Status:** Verify physical/virtual joining date, employee ID, and location; capture reason if non-joining.
+### Phase 8: Placement Management (Steps 36–41) [IMPLEMENTED & VERIFIED]
+* **Step 36: Receive Final Results [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Formal intake and reconciliation of authoritative final candidate hiring outcomes communicated by corporate HR. Supports manual and bulk structured intake with validation against participated drive history. Reference code format `RES-YYYYMMDD-XXXX`.
+  * *Implementation:* `apps.placements.models.FinalResultIntake`, `apps.placements.services.receive_final_results`, selectors for participating candidates, and `/api/v1/placements/intakes/`.
+* **Step 37: Update Candidate Status [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Update candidate placement status with authoritative choices: `SELECTED`, `REJECTED`, `WAITING_LIST`, `HOLD`. Validates status transitions; requires documented reason when revoking `SELECTED`; preserves auditable chronological history.
+  * *Implementation:* `apps.placements.models.CandidatePlacementStatus`, `PlacementStatusHistory`, `apps.placements.services.update_candidate_placement_status`, and `/api/v1/placements/statuses/`.
+* **Step 38: Notify Students [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Contextual placement outcome advisories targeted to candidate's verified institutional email and phone. Truthful provider outcome tracking (SIMULATED/SENT/FAILED) without claiming unconfigured live dispatches. Deduplication safeguards prevent accidental re-transmissions.
+  * *Implementation:* `apps.placements.models.PlacementNotificationLog`, `apps.placements.services.notify_candidate_of_placement_status`, and `/api/v1/placements/statuses/<id>/notify/`.
+* **Step 39: Upload Offer Letter [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Secure PDF offer letter document management strictly restricted to `SELECTED` candidates. Enforces `%PDF-` binary magic bytes header, 5MB limit, SHA-256 integrity hash, isolated private storage, streaming download endpoint, and immutable version archival.
+  * *Implementation:* `apps.placements.models.CandidateOfferLetter`, `OfferLetterVersion`, `apps.placements.validators.validate_offer_letter_pdf`, `apps.placements.services.upload_offer_letter`, and `/api/v1/placements/offers/` & `/api/v1/placements/offers/<id>/download/`.
+* **Step 40: Track Offer Acceptance [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Lifecycle tracking across `PENDING_RESPONSE`, `ACCEPTED`, `DECLINED`, `EXPIRED`. Candidate self-service via student portal vs authorized staff recording of offline responses. Nullable acceptance deadline without invented default expiration. Closed offer guard blocks contradictory re-submissions.
+  * *Implementation:* `apps.placements.services.record_offer_acceptance`, student self-service endpoints, and `/api/v1/placements/offers/<id>/record-acceptance/`.
+* **Step 41: Track Joining Status [IMPLEMENTED & VERIFIED]**
+  * *Business Requirement:* Authoritative joining verification: `JOINED`, `NOT_JOINED`, `DEFERRED`. Strict separation of offer acceptance from actual joining (accepted offer transitions to `PENDING_JOINING`, not `JOINED`). Requires revised date or reason on deferral. Logs durable `JoiningStatusHistory`.
+  * *Implementation:* `apps.placements.models.JoiningStatusHistory`, `apps.placements.services.verify_candidate_joining`, and `/api/v1/placements/offers/<id>/verify-joining/`.
 
 ### Phases 9–13: Continuous Feedback, Sync & Analytics
 * **Phase 9: Feedback Collection:** Collect 360-degree feedback across students (difficulty, questions asked), HR recruiters, and trainers.

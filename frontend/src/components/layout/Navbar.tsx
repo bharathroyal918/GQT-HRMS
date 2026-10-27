@@ -19,6 +19,7 @@ import {
   GraduationCap,
   ShieldCheck,
   Send,
+  Award,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -93,6 +94,9 @@ export const Navbar: React.FC = () => {
       : []),
     ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'EVALUATOR', 'TRAINER', 'STUDENT', 'AUDITOR'])
       ? [{ name: 'Interviews', href: '/interviews', icon: Calendar }]
+      : []),
+    ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'STUDENT', 'AUDITOR'])
+      ? [{ name: 'Placements', href: '/placements', icon: Award }]
       : []),
     ...(hasRole('ADMIN') ? [{ name: 'Diagnostics', href: '/diagnostics', icon: Activity }] : []),
   ];
