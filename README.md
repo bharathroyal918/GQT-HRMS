@@ -1,6 +1,6 @@
 # GQT HRMS & Recruitment CRM Platform
 
-> **Status:** Phase 11 (Reports & Analytics — 5 Categories & Safe CSV Exports) Complete & Verified<br>
+> **Status:** Phase 13 (Continuous Improvement — Evidence-Based Quality Loop) Complete & Verified<br>
 > **Source of Truth:** `docs/requirements/workflow_traceability.md` (13 Business Phases, 41 Operational Steps, 19 CRM Modules, 8 AI Capabilities)  
 > **Role & Permission Matrix:** `docs/security/role_permission_matrix.md` (9 Operational Roles, Deny-by-Default, Object-Level Ownership)  
 > **Target Database:** Supabase-hosted PostgreSQL 16 Engine with SSL  
@@ -27,9 +27,11 @@
 | **Feedback Collection Subsystem** | Student Experiences, Corporate HR Evaluations, Trainer Readiness Rubrics | `apps.feedback` module covering Student Interview Experiences (narrative, questions, difficulty, suggestions, anonymity), Corporate HR Evaluations (candidate quality, 1–5 star ratings for tech, comms, satisfaction, remarks), and Trainer Feedback (readiness levels, training effectiveness, and actionable improvement areas) |
 | **CRM Integration & Reconciliation Subsystem** | 8-Domain Consistency Scan, Idempotent Reconciliation, 360° Profiles, Unified Timelines | `apps.crm` module covering 8 domain areas (Companies, HR Contacts, Candidates, Resumes, Interviews, Placements, Feedback, and Timelines), non-destructive conflict detection, active hiring partner promotion, and immutable reconciliation audit runs |
 | **Reports & Analytics Subsystem** | 5 Categories (Company, Student, Placement, Funnel, Monthly), Safe CSV Exports | `apps.analytics` module aggregating read-only domain queries, 10-stage conversion funnel, Step 36–41 lifecycles, student self-isolation (`/my-summary/`), and Formula Injection defense (`=`, `+`, `-`, `@`, `\t`, `\r` escaping) |
+| **Automated Follow-Up Subsystem** | Transactional Outbox, Email & WhatsApp Adapters, Officer Alerts, SLA Escalations | `apps.crm.scheduler` and adapters module covering Phase 12 with transactional outbox (`FollowUpReminderItem`), vendor-neutral adapters, in-app staff alerts, SLA case escalations (>3 days), and automated background processing |
+| **Continuous Improvement Subsystem** | Placement Rate Analytics, Feedback Intelligence, Skill Gaps, Training Plans, Reviews | `apps.analytics.improvement` module covering Phase 13 with granular student funnels, k-anonymity (min 3 threshold), deterministic skill gap matrix, Placement Head gated remedial training plans, recruitment cycle reviews with baseline snapshots, and 6-point diagnostics |
 | **Database** | Supabase PostgreSQL 16 via `psycopg` (v3) | SSL connection (`sslmode=require`), UUIDv4 primary keys, normalized case-insensitive email uniqueness, transactional operations |
 | **Security** | Argon2id, Fail-Closed Config, Log Redaction | Server-side validation, `SensitiveDataFilter` redacting secrets in logs, request correlation IDs (`X-Correlation-ID`) |
-| **Testing** | pytest-django, Vitest | 272 backend automated tests (including 10 Phase 11 tests), 86 frontend component/route tests (358 total automated tests), strict TypeScript checks |
+| **Testing** | pytest-django, Vitest | 298 backend automated tests, 98 frontend component/route tests (396 total automated tests), strict TypeScript checks |
 
 
 
@@ -149,10 +151,10 @@ powershell -ExecutionPolicy Bypass -File scripts\verify_dev.ps1
 Verification includes:
 1. `manage.py check` &rarr; Django system checks (0 issues)
 2. `manage.py makemigrations --check --dry-run` &rarr; 0 schema drift
-3. `pytest` &rarr; **111/111 automated backend tests pass (25 Creatives + 25 Jobs + 26 CRM + 35 Auth/Core)**
+3. `pytest` &rarr; **298/298 automated backend tests pass across 19 test suites**
 4. `tsc -b --noEmit` &rarr; Strict TypeScript compilation clean
-5. `vitest run` &rarr; **29/29 frontend component & route tests pass across 7 test suites**
-6. `npm run build` &rarr; Vite production build passes in `dist/` (1752 modules bundled) with 0 secret leaks
+5. `vitest run` &rarr; **98/98 frontend component & route tests pass across 17 test suites**
+6. `npm run build` &rarr; Vite production build passes in `dist/` (1777 modules bundled) with 0 secret leaks
 
 ---
 
@@ -290,15 +292,19 @@ gqt-hrms/
 
 ---
  
-## 7. Next Phase: Interview Management & Drive Day Tracking (Steps 29–35)
+## 7. Workflow Phase Summary & Milestone Status
 
-Phase 7 (Candidate Submission & Profile Dispatch — Steps 24–28) is complete and verified with 100% green automated tests across all 6 quality gates (180 backend tests, 46 frontend tests, 226 total tests). The system is strictly paused awaiting explicit authorization before beginning:
-* **Phase 8: Interview Management & Drive Day Tracking (Steps 29–35)**
-  * Step 29: Receive Shortlisted Candidates (ingest recruiter shortlist and match against submission roster).
-  * Step 30: Notify Students (dispatch interview drive invitations with venue, reporting time, and documents).
-  * Step 31: Automatic Reminders (scheduled idempotent reminders at 24h, 2h, and 30m before drive).
-  * Step 32: Attendance Confirmation (capture candidate RSVP status prior to drive day).
-  * Step 33: Drive Day Attendance & Conduct (record physical/virtual check-in and attendance).
-  * Step 34: Track Interview Rounds (sequential multi-round evaluation: Aptitude, Coding, Technical, HR, Managerial).
-  * Step 35: HR Follow-up During Drives (maintain recruiter communication on pending rounds and result dates).
+All 13 Authoritative Business Phases (41 Operational Steps, 19 CRM Modules) are complete and verified with 100% green automated tests across all 6 quality gates (298 backend tests, 98 frontend tests, 396 total automated tests):
+* **Phase 1: Company Acquisition (Steps 1–4):** `apps.crm` — Company discovery, 100+ outreach/day tracking, HR contacts, follow-up queues.
+* **Phase 2: Job Requirement Management & Creatives (Steps 5–9):** `apps.jobs` & `apps.creatives` — 5-point JD verification checklist, Placement Head approval gate, 4-point design checklist, magic bytes security.
+* **Phase 3: Student Registration & Eligibility Engine (Steps 10–14):** `apps.students` — Multi-channel broadcast, `%PDF-` binary resume vault, deterministic eligibility engine, cohort locking.
+* **Phase 4: Student Preparation (Steps 15–23):** `apps.preparation` — Rubric resume reviews, monotonic iterations, timed assessments, grooming certification, mock evaluations, Step 23 Placement Head readiness gate.
+* **Phase 5: Candidate Submission & Profile Dispatch (Steps 24–28):** `apps.submissions` — Candidate roster assembly, master Excel generation with SHA-256 fingerprint, certified PDF resume attachments, corporate HR transmission logging, recruiter receipt acknowledgment.
+* **Phases 6 & 7: Interview Management & Drive Day Tracking (Steps 29–35):** `apps.interviews` — Shortlist intake, multi-channel scheduling, idempotent automatic reminders (24h, 2h, 30m), attendance confirmation, 5-round tracking (Aptitude, Coding, Technical, HR, Managerial), corporate HR follow-up metrics.
+* **Phase 8: Placement Management (Steps 36–41):** `apps.placements` — Final results intake, 4 candidate statuses (Selected, Rejected, Waiting List, Hold), student notifications, secure private PDF offer letter upload, offer acceptance lifecycle, joining verification (Joined, Not Joined, Deferred).
+* **Phase 9: Feedback Collection:** `apps.feedback` — 360° rubrics across Student experiences (with anonymity toggle), Corporate HR evaluations (1–5 star ratings), and Trainer readiness evaluations.
+* **Phase 10: CRM Database Update & Reconciliation:** `apps.crm` — 8-domain consistency scan, idempotent partner promotion (`ACTIVE_HIRING_PARTNER`), 360° Candidate & Company profiles, unified timelines.
+* **Phase 11: Reports & Analytics:** `apps.analytics` — 5 report categories, 10-stage recruitment conversion funnel, student self-isolation (`/my-summary/`), and CSV Formula Injection defense.
+* **Phase 12: Automated Follow-Up Subsystem:** `apps.crm.scheduler` — Transactional outbox (`FollowUpReminderItem`), vendor-neutral adapters, in-app staff alerts, SLA case escalations (>3 days), and automated background processing.
+* **Phase 13: Continuous Improvement Subsystem:** `apps.analytics.improvement` — Placement rate analytics, cross-category feedback intelligence (k-anonymity), deterministic skill gap matrix, Placement Head gated remedial training plans, recruitment cycle reviews with frozen baseline snapshots, and 6-point diagnostics.
 

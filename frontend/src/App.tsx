@@ -46,6 +46,7 @@ import { InterviewWorkspacePage } from './pages/interviews/InterviewWorkspacePag
 import { PlacementWorkspacePage } from './pages/placements/PlacementWorkspacePage';
 import { FeedbackWorkspacePage } from './pages/feedback/FeedbackWorkspacePage';
 import { ReportsHubPage } from './pages/reports/ReportsHubPage';
+import { ContinuousImprovementHubPage } from './pages/improvement/ContinuousImprovementHubPage';
 
 const CRM_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'AUDITOR'];
 const JOB_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'CREATIVE_DESIGNER', 'AUDITOR'];
@@ -58,6 +59,7 @@ const INTERVIEW_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_REL
 const PLACEMENT_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'STUDENT', 'AUDITOR'];
 const FEEDBACK_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'TRAINER', 'EVALUATOR', 'STUDENT', 'AUDITOR'];
 const REPORT_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'AUDITOR', 'STUDENT'];
+const IMPROVEMENT_ROLES = ['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'TRAINER', 'EVALUATOR', 'AUDITOR'];
 
 export const App: React.FC = () => {
   return (
@@ -364,6 +366,24 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute requiredRoles={REPORT_ROLES}>
                     <ReportsHubPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Continuous Improvement & Strategic Planning (Phase 13) */}
+              <Route
+                path="continuous-improvement"
+                element={
+                  <ProtectedRoute requiredRoles={IMPROVEMENT_ROLES}>
+                    <ContinuousImprovementHubPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="improvement"
+                element={
+                  <ProtectedRoute requiredRoles={IMPROVEMENT_ROLES}>
+                    <ContinuousImprovementHubPage />
                   </ProtectedRoute>
                 }
               />

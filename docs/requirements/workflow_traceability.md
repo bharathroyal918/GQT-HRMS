@@ -23,8 +23,8 @@
 | **Phase 9** | **Feedback Collection** | Student, HR, and Trainer 360° Rubrics | `apps.feedback` [IMPLEMENTED & VERIFIED] |
 | **Phase 10** | **CRM Database Update** | Candidate History & Corporate Timelines | `apps.crm.sync` [IMPLEMENTED & VERIFIED] |
 | **Phase 11** | **Reports & Analytics** | 5 Categories (Company, Student, Placement, Funnel, Monthly) & Sanitized CSV | `apps.analytics` [IMPLEMENTED & VERIFIED] |
-| **Phase 12** | **Automated Follow-Up** | Overdue Escalations & Candidate Reconnection | `apps.crm.scheduler` |
-| **Phase 13** | **Continuous Improvement** | Recruiter Curriculum Gaps & Cutoff Optimization | `apps.analytics.improvement` |
+| **Phase 12** | **Automated Follow-Up** | Overdue Escalations & Candidate Reconnection | `apps.crm.scheduler` [IMPLEMENTED & VERIFIED] |
+| **Phase 13** | **Continuous Improvement** | Recruiter Curriculum Gaps & Cutoff Optimization | `apps.analytics.improvement` [IMPLEMENTED & VERIFIED] |
 
 ---
 
@@ -282,8 +282,17 @@
   * Master 6-Gate Verification (`scripts/verify_dev.ps1`): 100% Passed.
 
 ### Phases 12–13: Continuous Sync & Automated Engagement
-* **Phase 12: Automated Follow-Up Worker:** Run automated background jobs to escalate overdue follow-ups, trigger annual hiring cycle outreach, reconnect unselected candidates, and engage placed students before joining.
-* **Phase 13: Continuous Improvement:** Analyze recruiter feedback to identify syllabus gaps, detect recurring interview elimination rounds, refine cutoff criteria based on placement success, and compile executive annual reports.
+* **Phase 12: Automated Follow-Up Worker:** Run automated background jobs to escalate overdue follow-ups, trigger annual hiring cycle outreach, reconnect unselected candidates, and engage placed students before joining. [IMPLEMENTED & VERIFIED]
+* **Phase 13: Continuous Improvement:** [IMPLEMENTED & VERIFIED]
+  * **Capability A (Placement Rate Analytics):** Distinct student conversion funnel, multi-offer distributions (single/dual/3+), and explicit formulas with documented numerators/denominators guarded against division-by-zero.
+  * **Capability B (Feedback Intelligence):** 3-category 360° feedback aggregation (recruiter ratings, student difficulty perceptions, trainer readiness assessments) enforcing institutional k-anonymity (minimum 3 responses).
+  * **Capability C (Skill Gap Matrix):** Purely deterministic, zero-AI matching between corporate market demand skills and institutional assessment attempt pass rates (<60% flagged as Critical Gaps; unassessed demand isolated).
+  * **Capability D (Strategic Training Plans):** Formal remedial training plan lifecycle (`DRAFT` -> `PROPOSED` -> `APPROVED` -> `SCHEDULED` -> `IN_PROGRESS` -> `COMPLETED`) gated strictly behind Placement Head authorization. Placement readiness certification remains immutable.
+  * **Capability E (Recruitment Cycle Reviews):** Cycle reviews with frozen baseline metrics snapshots and trackable corrective action items (`PLANNED` -> `IN_PROGRESS` -> `VERIFIED` / `DROPPED`).
+  * **Data Quality Diagnostics:** 6-point continuous improvement diagnostic scan auditing orphaned placements, duplicate submissions, unresolved offers, and small-cohort privacy thresholds.
+  * **Sanitized CSV Exporters:** Safe exports with formula injection sanitization (`=`, `+`, `-`, `@` escaped).
+  * **Endpoints:** All endpoints mounted under `/api/v1/continuous-improvement/`.
+  * **Frontend:** `frontend/src/types/continuousImprovement.ts`, `frontend/src/api/continuousImprovementApi.ts`, `frontend/src/pages/improvement/ContinuousImprovementHubPage.tsx`.
 
 ---
 

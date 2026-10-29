@@ -22,6 +22,7 @@ import {
   Award,
   MessageSquare,
   BarChart3,
+  RotateCcw,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -106,6 +107,9 @@ export const Navbar: React.FC = () => {
       : []),
     ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'AUDITOR', 'STUDENT'])
       ? [{ name: 'Reports & Analytics', href: '/reports', icon: BarChart3 }]
+      : []),
+    ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'TRAINER', 'EVALUATOR', 'AUDITOR'])
+      ? [{ name: 'Continuous Improvement', href: '/continuous-improvement', icon: RotateCcw }]
       : []),
     ...(hasRole('ADMIN') ? [{ name: 'Diagnostics', href: '/diagnostics', icon: Activity }] : []),
   ];

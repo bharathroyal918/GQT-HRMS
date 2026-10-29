@@ -110,3 +110,78 @@ class CanAccessStudentSelfReport(BasePermission):
         roles = get_user_roles(request.user)
         allowed = STAFF_ROLES | AUDITOR_ROLES | {RoleCatalog.STUDENT}
         return bool(roles & allowed)
+
+
+# =========================================================================
+# Phase 13: Continuous Improvement Permissions
+# =========================================================================
+class CanAccessPlacementRateAnalytics(BasePermission):
+    """Staff, HR Managers, and Auditors may access granular placement analytics. Students strictly denied."""
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        roles = get_user_roles(request.user)
+        if RoleCatalog.STUDENT in roles and not (roles & (STAFF_ROLES | AUDITOR_ROLES | HR_MGR_ROLES)):
+            return False
+        allowed = STAFF_ROLES | AUDITOR_ROLES | HR_MGR_ROLES
+        return bool(roles & allowed)
+
+
+class CanAccessFeedbackIntelligence(BasePermission):
+    """Staff, Evaluators, Trainers, HR Managers, and Auditors may access Feedback Intelligence. Students strictly denied."""
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        roles = get_user_roles(request.user)
+        if RoleCatalog.STUDENT in roles and not (roles & (STAFF_ROLES | AUDITOR_ROLES | ACADEMIC_EVAL_ROLES | HR_MGR_ROLES)):
+            return False
+        allowed = STAFF_ROLES | AUDITOR_ROLES | ACADEMIC_EVAL_ROLES | HR_MGR_ROLES
+        return bool(roles & allowed)
+
+
+class CanAccessSkillGapMatrix(BasePermission):
+    """Staff, Trainers, Evaluators, and Auditors may access the Skill Gap Matrix. Students strictly denied."""
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        roles = get_user_roles(request.user)
+        if RoleCatalog.STUDENT in roles and not (roles & (STAFF_ROLES | AUDITOR_ROLES | ACADEMIC_EVAL_ROLES)):
+            return False
+        allowed = STAFF_ROLES | AUDITOR_ROLES | ACADEMIC_EVAL_ROLES
+        return bool(roles & allowed)
+
+
+class CanManageTrainingPlans(BasePermission):
+    """Staff, Trainers, and Auditors can view training plans; Staff & Trainers can create; Staff can update status."""
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        roles = get_user_roles(request.user)
+        if RoleCatalog.STUDENT in roles and not (roles & (STAFF_ROLES | AUDITOR_ROLES | ACADEMIC_EVAL_ROLES)):
+            return False
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            allowed = STAFF_ROLES | AUDITOR_ROLES | ACADEMIC_EVAL_ROLES
+            return bool(roles & allowed)
+        # Create / Update
+        allowed_write = STAFF_ROLES | ACADEMIC_EVAL_ROLES
+        return bool(roles & allowed_write)
+
+
+class CanManageCycleReviews(BasePermission):
+    """Staff and Auditors can view cycle reviews; Only Staff can create or modify cycle reviews."""
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        roles = get_user_roles(request.user)
+        if RoleCatalog.STUDENT in roles and not (roles & (STAFF_ROLES | AUDITOR_ROLES)):
+            return False
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            allowed = STAFF_ROLES | AUDITOR_ROLES
+            return bool(roles & allowed)
+        return bool(roles & STAFF_ROLES)
+
