@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from apps.accounts import services
+from apps.accounts import selectors, services
 from apps.accounts.models import Role, User
 from apps.accounts.permissions import IsAdminOrSuperUser
 from apps.accounts.serializers import (
@@ -17,6 +17,8 @@ from apps.accounts.serializers import (
     RoleSerializer,
     TokenRefreshSerializer,
     UserAdminCreateSerializer,
+    UserAdminUpdateSerializer,
+    UserAuditLogSerializer,
     UserRoleAssignSerializer,
     UserSerializer,
     UserStatusUpdateSerializer,
@@ -224,37 +226,83 @@ class RoleListView(generics.ListAPIView):
 
 
 @extend_schema_view(
-    list=extend_schema(description="List user accounts across the enterprise."),
+    list=extend_schema(description="List user accounts across the enterprise with search, filter, and ordering."),
     retrieve=extend_schema(description="Retrieve user profile by UUID."),
     create=extend_schema(description="Provision a new user account with role assignments."),
+    update=extend_schema(description="Update permitted user profile details."),
+    partial_update=extend_schema(description="Partially update permitted user profile details."),
 )
 class UserAdminViewSet(viewsets.ModelViewSet):
     """Administrative management of platform user accounts and role assignments."""
 
     permission_classes = [IsAdminOrSuperUser]
-    queryset = User.objects.all().order_by("-created_at")
     serializer_class = UserSerializer
+
+    def get_queryset(self):
+        """Construct an optimized, server-side filtered, and searched user queryset."""
+        search = self.request.query_params.get("search")
+        role = self.request.query_params.get("role")
+        ordering = self.request.query_params.get("ordering")
+
+        # Parse is_active status from query params
+        status_param = self.request.query_params.get("status")
+        is_active_param = self.request.query_params.get("is_active")
+        is_active = None
+        target_param = status_param if status_param is not None else is_active_param
+        if target_param is not None:
+            lower_val = target_param.strip().lower()
+            if lower_val in ["active", "true", "1"]:
+                is_active = True
+            elif lower_val in ["inactive", "false", "0"]:
+                is_active = False
+
+        return selectors.get_admin_users_queryset(
+            search=search,
+            role=role,
+            is_active=is_active,
+            ordering=ordering,
+        )
 
     def get_serializer_class(self):
         if self.action == "create":
             return UserAdminCreateSerializer
+        if self.action in ["update", "partial_update"]:
+            return UserAdminUpdateSerializer
         return UserSerializer
 
-    def perform_create(self, serializer: UserAdminCreateSerializer) -> None:
-        roles = serializer.validated_data.pop("roles", [])
-        password = serializer.validated_data.pop("password")
-        user = User.objects.create_user(password=password, **serializer.validated_data)
-        if roles:
-            services.assign_roles_to_user(
-                target_user=user,
-                role_codes=roles,
-                assigned_by=self.request.user,
-                request=self.request,
-            )
+    def create(self, request: Request, *args, **kwargs) -> Response:
+        """Provision a new user account with initial roles and security audit event."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = services.create_user_by_admin(
+            validated_data=serializer.validated_data,
+            created_by=request.user,
+            request=request,
+        )
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+
+    def update(self, request: Request, *args, **kwargs) -> Response:
+        """Update permitted profile details on a target user account."""
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        updated_user = services.update_user_profile(
+            target_user=instance,
+            validated_data=serializer.validated_data,
+            updated_by=request.user,
+            request=request,
+        )
+        return Response(UserSerializer(updated_user).data, status=status.HTTP_200_OK)
+
+    def partial_update(self, request: Request, *args, **kwargs) -> Response:
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
 
     @action(detail=True, methods=["patch"])
     def status(self, request: Request, pk=None) -> Response:
-        """Activate or deactivate a user account."""
+        """Activate or deactivate a user account with safety checks."""
         user = self.get_object()
         serializer = UserStatusUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -269,7 +317,7 @@ class UserAdminViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def roles(self, request: Request, pk=None) -> Response:
-        """Assign or revoke operational roles for a user account."""
+        """Assign or revoke operational roles for a user account with safeguards."""
         user = self.get_object()
         serializer = UserRoleAssignSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -281,3 +329,16 @@ class UserAdminViewSet(viewsets.ModelViewSet):
             request=request,
         )
         return Response({"roles": active_roles}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"], url_path="audit-logs")
+    def audit_logs(self, request: Request, pk=None) -> Response:
+        """Retrieve paginated, read-only audit history of administrative changes for this user."""
+        user = self.get_object()
+        logs = selectors.get_user_audit_logs(user)
+        page = self.paginate_queryset(logs)
+        if page is not None:
+            serializer = UserAuditLogSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = UserAuditLogSerializer(logs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)

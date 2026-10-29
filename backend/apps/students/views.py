@@ -5,12 +5,15 @@ from rest_framework import status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from apps.accounts.models import RoleCatalog
+from apps.jobs.models import JobRequirement, JobRequirementStatus
 from apps.students.models import (
     JobPublication,
+    JobPublicationStatus,
     StudentProfile,
     StudentResume,
     StudentApplication,
     EligibilityEvaluation,
+    EligibilityStatus,
     CandidateCohort,
 )
 from apps.students.permissions import (
@@ -40,6 +43,7 @@ from apps.students.services import (
     register_student,
     upload_student_resume,
     update_student_profile,
+    evaluate_student_eligibility,
     apply_student_for_job,
     override_candidate_eligibility,
     finalize_candidate_cohort,
@@ -71,15 +75,45 @@ class JobPublicationListCreateAPIView(APIView):
 
     def get(self, request):
         job_id = request.query_params.get("job_id")
+        eligible_only = (
+            request.query_params.get("eligible_only", "").lower() in ("true", "1", "yes")
+            or request.query_params.get("eligible", "").lower() in ("true", "1", "yes")
+        )
+        user_roles = request.user.get_active_roles()
+        is_staff = any(r in STAFF_ROLES or r in AUDIT_ROLES for r in user_roles) or request.user.is_superuser
+
         if job_id:
             pubs = list_publications_for_job(job_id)
+            if not is_staff:
+                pubs = pubs.filter(
+                    job_requirement__status=JobRequirementStatus.APPROVED,
+                    job_requirement__is_archived=False,
+                    status__in=[JobPublicationStatus.DISPATCHED, JobPublicationStatus.DELIVERED],
+                )
         else:
-            # Placement staff see all recent publications
             pubs = JobPublication.objects.select_related(
-                "job_requirement", "creative_version", "published_by"
-            ).order_by("-created_at")[:50]
+                "job_requirement", "job_requirement__company", "creative_version", "published_by"
+            )
+            if not is_staff:
+                # Student view: only published, approved, non-archived recruitment opportunities
+                pubs = pubs.filter(
+                    job_requirement__status=JobRequirementStatus.APPROVED,
+                    job_requirement__is_archived=False,
+                    status__in=[JobPublicationStatus.DISPATCHED, JobPublicationStatus.DELIVERED],
+                )
+            pubs = pubs.order_by("-created_at")[:50]
 
-        serializer = JobPublicationSerializer(pubs, many=True)
+        if eligible_only:
+            profile = get_student_profile_by_user(request.user)
+            if not profile:
+                return Response([])
+            eligible_pubs = [
+                p for p in pubs if evaluate_student_eligibility(p.job_requirement, profile)["passed"]
+            ]
+            serializer = JobPublicationSerializer(eligible_pubs, many=True, context={"request": request})
+            return Response(serializer.data)
+
+        serializer = JobPublicationSerializer(pubs, many=True, context={"request": request})
         return Response(serializer.data)
 
     def post(self, request):
@@ -100,7 +134,112 @@ class JobPublicationListCreateAPIView(APIView):
             )
             return Response(JobPublicationSerializer(pub).data, status=status.HTTP_201_CREATED)
         except ValidationError as exc:
+            if hasattr(exc, "message_dict"):
+                return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+            if hasattr(exc, "messages") and exc.messages:
+                return Response({"detail": exc.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EligibleJobPublicationListAPIView(APIView):
+    """List published recruitment opportunities that the authenticated student is eligible to apply for (pre-application discovery)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user_roles = request.user.get_active_roles()
+        if RoleCatalog.STUDENT not in user_roles and not getattr(request.user, "student_profile", None):
+            return Response(
+                {"detail": "Only registered students with an active profile can query eligible placement drives."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        profile = get_student_profile_by_user(request.user)
+        if not profile:
+            return Response(
+                {"detail": "Only registered students with an active profile can query eligible placement drives."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        pubs = (
+            JobPublication.objects.select_related(
+                "job_requirement", "job_requirement__company", "creative_version", "published_by"
+            )
+            .filter(
+                job_requirement__status=JobRequirementStatus.APPROVED,
+                job_requirement__is_archived=False,
+                status__in=[JobPublicationStatus.DISPATCHED, JobPublicationStatus.DELIVERED],
+            )
+            .order_by("-created_at")[:50]
+        )
+
+        eligible_pubs = [
+            p for p in pubs if evaluate_student_eligibility(p.job_requirement, profile)["passed"]
+        ]
+        serializer = JobPublicationSerializer(eligible_pubs, many=True, context={"request": request})
+        return Response(serializer.data)
+
+
+class JobEligibilityPreviewAPIView(APIView):
+    """Preview deterministic eligibility evaluation for a published opportunity without submitting an application."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, job_id=None):
+        user_roles = request.user.get_active_roles()
+        if RoleCatalog.STUDENT not in user_roles and not getattr(request.user, "student_profile", None):
+            return Response(
+                {"detail": "Only registered students with an active profile can preview eligibility."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        profile = get_student_profile_by_user(request.user)
+        if not profile:
+            return Response(
+                {"detail": "Only registered students with an active profile can preview eligibility."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        target_job_id = job_id or request.query_params.get("job_requirement_id") or request.query_params.get("job_id")
+        if not target_job_id:
+            return Response(
+                {"job_requirement_id": "This parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            job = JobRequirement.objects.select_related("company").get(id=target_job_id)
+        except (JobRequirement.DoesNotExist, ValueError):
+            raise Http404("Job opportunity not found.")
+
+        # Visibility: Job must be approved, not archived, and have a dispatched/delivered notice
+        if job.status != JobRequirementStatus.APPROVED or job.is_archived:
+            raise Http404("Job opportunity is not currently available for student applications.")
+
+        has_published_notice = JobPublication.objects.filter(
+            job_requirement=job,
+            status__in=[JobPublicationStatus.DISPATCHED, JobPublicationStatus.DELIVERED],
+        ).exists()
+        if not has_published_notice:
+            raise Http404("Job opportunity is not published for student registration.")
+
+        eval_result = evaluate_student_eligibility(job, profile)
+        status_display_map = {
+            EligibilityStatus.ELIGIBLE: "Eligible",
+            EligibilityStatus.INELIGIBLE: "Ineligible",
+            EligibilityStatus.INCOMPLETE: "Profile Incomplete",
+        }
+        data = {
+            "job_requirement_id": str(job.id),
+            "job_title": job.title,
+            "company_name": job.company.name,
+            "status": eval_result["status"],
+            "status_display": status_display_map.get(eval_result["status"], eval_result["status"]),
+            "passed": eval_result["passed"],
+            "details": eval_result["details"],
+            "criteria_snapshot": eval_result["criteria_snapshot"],
+        }
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class JobPublicationRetryAPIView(APIView):
@@ -113,6 +252,10 @@ class JobPublicationRetryAPIView(APIView):
             pub = retry_job_publication(pub_id, user=request.user, request=request)
             return Response(JobPublicationSerializer(pub).data)
         except ValidationError as exc:
+            if hasattr(exc, "message_dict"):
+                return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+            if hasattr(exc, "messages") and exc.messages:
+                return Response({"detail": exc.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -184,6 +327,10 @@ class StudentProfileMeAPIView(APIView):
             updated = update_student_profile(profile, serializer.validated_data, user=request.user, request=request)
             return Response(StudentProfileSerializer(updated).data)
         except ValidationError as exc:
+            if hasattr(exc, "message_dict"):
+                return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+            if hasattr(exc, "messages") and exc.messages:
+                return Response({"detail": exc.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -211,6 +358,10 @@ class StudentProfileDetailAPIView(APIView):
             updated = update_student_profile(profile, serializer.validated_data, user=request.user, request=request)
             return Response(StudentProfileSerializer(updated).data)
         except ValidationError as exc:
+            if hasattr(exc, "message_dict"):
+                return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+            if hasattr(exc, "messages") and exc.messages:
+                return Response({"detail": exc.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -257,6 +408,10 @@ class StudentResumeUploadAPIView(APIView):
             resume = upload_student_resume(profile, file_obj, user=request.user, request=request)
             return Response(StudentResumeSerializer(resume).data, status=status.HTTP_201_CREATED)
         except ValidationError as exc:
+            if hasattr(exc, "message_dict"):
+                return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+            if hasattr(exc, "messages") and exc.messages:
+                return Response({"detail": exc.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -308,6 +463,10 @@ class StudentApplicationApplyAPIView(APIView):
             app = apply_student_for_job(profile, job_id, user=request.user, request=request)
             return Response(StudentApplicationSerializer(app).data, status=status.HTTP_201_CREATED)
         except ValidationError as exc:
+            if hasattr(exc, "message_dict"):
+                return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+            if hasattr(exc, "messages") and exc.messages:
+                return Response({"detail": exc.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -390,6 +549,10 @@ class EligibilityOverrideAPIView(APIView):
             )
             return Response(EligibilityEvaluationSerializer(evaluation).data)
         except ValidationError as exc:
+            if hasattr(exc, "message_dict"):
+                return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+            if hasattr(exc, "messages") and exc.messages:
+                return Response({"detail": exc.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -427,4 +590,8 @@ class CandidateCohortFinalizeAPIView(APIView):
             )
             return Response(CandidateCohortSerializer(cohort).data, status=status.HTTP_200_OK)
         except ValidationError as exc:
+            if hasattr(exc, "message_dict"):
+                return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+            if hasattr(exc, "messages") and exc.messages:
+                return Response({"detail": exc.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)

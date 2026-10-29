@@ -63,3 +63,92 @@ class AuditLog(models.Model):
 
     def __str__(self) -> str:
         return f"{self.created_at.isoformat()} | {self.action} on {self.resource_type}:{self.resource_id}"
+
+
+class NotificationCategory:
+    SYSTEM = "SYSTEM"
+    JOB_DRIVE = "JOB_DRIVE"
+    APPLICATION = "APPLICATION"
+    INTERVIEW = "INTERVIEW"
+    PLACEMENT = "PLACEMENT"
+    FOLLOW_UP = "FOLLOW_UP"
+
+    CHOICES = (
+        (SYSTEM, "System Notice"),
+        (JOB_DRIVE, "Job & Recruitment Drive"),
+        (APPLICATION, "Application Update"),
+        (INTERVIEW, "Interview Update"),
+        (PLACEMENT, "Placement Outcome"),
+        (FOLLOW_UP, "CRM & Follow-Up Alert"),
+    )
+
+
+class Notification(TimeStampedModel):
+    """Platform-wide in-app notification entity supporting recipient-isolated delivery and unread tracking."""
+
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+        help_text="User recipient of this in-app notification.",
+        db_index=True,
+    )
+    category = models.CharField(
+        max_length=40,
+        choices=NotificationCategory.CHOICES,
+        default=NotificationCategory.SYSTEM,
+        db_index=True,
+        help_text="Functional domain category of the notification.",
+    )
+    title = models.CharField(
+        max_length=255,
+        help_text="Concise summary header for the notification.",
+    )
+    message = models.TextField(
+        help_text="Detailed explanatory notification body.",
+    )
+    link = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Internal application route link (e.g. /students/drives).",
+    )
+    is_read = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Indicates whether the recipient has acknowledged or viewed this notification.",
+    )
+    read_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="UTC timestamp when the notification was marked as read.",
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Sanitized structured context payload. Strictly forbids secrets and credentials.",
+    )
+    idempotency_key = models.CharField(
+        max_length=128,
+        blank=True,
+        null=True,
+        unique=True,
+        db_index=True,
+        help_text="Deterministic event key preventing duplicate notifications on retries.",
+    )
+
+    class Meta:
+        db_table = "core_notification"
+        ordering = ["-created_at"]
+        verbose_name = "Notification"
+        verbose_name_plural = "Notifications"
+        indexes = [
+            models.Index(fields=["recipient", "is_read", "-created_at"], name="core_notif_recip_read_idx"),
+            models.Index(fields=["recipient", "-created_at"], name="core_notif_recip_created_idx"),
+            models.Index(fields=["category", "-created_at"], name="core_notif_cat_created_idx"),
+        ]
+
+    def __str__(self) -> str:
+        status_str = "READ" if self.is_read else "UNREAD"
+        return f"Notification for {self.recipient.email}: [{self.category}] {self.title} ({status_str})"
+

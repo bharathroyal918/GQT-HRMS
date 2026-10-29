@@ -14,6 +14,7 @@ import {
   SkillGapMatrixResponse,
   TrainingPlan,
   TrainingPlanCreatePayload,
+  TrainingPlansResponse,
   TrainingPlanTransitionPayload,
 } from '../types/continuousImprovement';
 
@@ -64,8 +65,8 @@ export const continuousImprovementApi = {
   },
 
   // 4. Strategic Training Plans
-  async getTrainingPlans(status?: string): Promise<TrainingPlan[]> {
-    const res = await apiClient.get<TrainingPlan[]>('/continuous-improvement/training-plans/', {
+  async getTrainingPlans(status?: string): Promise<TrainingPlansResponse> {
+    const res = await apiClient.get<TrainingPlansResponse>('/continuous-improvement/training-plans/', {
       params: status ? { status } : undefined,
     });
     return res.data;

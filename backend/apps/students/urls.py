@@ -3,6 +3,8 @@ from django.urls import path
 from apps.students.views import (
     JobPublicationListCreateAPIView,
     JobPublicationRetryAPIView,
+    EligibleJobPublicationListAPIView,
+    JobEligibilityPreviewAPIView,
     StudentRegistrationAPIView,
     StudentProfileMeAPIView,
     StudentProfileDetailAPIView,
@@ -20,9 +22,12 @@ from apps.students.views import (
 app_name = "students"
 
 urlpatterns = [
-    # Step 10: Publish Job Notification
+    # Step 10: Publish Job Notification & Eligible Drives Discovery
     path("publications/", JobPublicationListCreateAPIView.as_view(), name="publication-list-create"),
+    path("publications/eligible/", EligibleJobPublicationListAPIView.as_view(), name="publication-eligible-list"),
     path("publications/<uuid:pub_id>/retry/", JobPublicationRetryAPIView.as_view(), name="publication-retry"),
+    path("jobs/<uuid:job_id>/eligibility-preview/", JobEligibilityPreviewAPIView.as_view(), name="job-eligibility-preview"),
+    path("eligibility/preview/", JobEligibilityPreviewAPIView.as_view(), name="eligibility-preview"),
 
     # Step 11: Student Registration
     path("register/", StudentRegistrationAPIView.as_view(), name="student-register"),

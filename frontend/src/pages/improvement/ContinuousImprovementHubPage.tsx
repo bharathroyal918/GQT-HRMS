@@ -259,6 +259,7 @@ export const ContinuousImprovementHubPage: React.FC = () => {
   const getCoverageBadge = (cat: SkillCoverageCategory) => {
     switch (cat) {
       case 'EVALUATED_WELL':
+      case 'STRENGTH':
         return {
           label: 'Evaluated & Strong',
           className: 'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -273,10 +274,21 @@ export const ContinuousImprovementHubPage: React.FC = () => {
           label: 'Unassessed Market Demand',
           className: 'bg-amber-100 text-amber-800 border-amber-200',
         };
+      case 'MODERATE_GAP':
+        return {
+          label: 'Moderate Gap (60–74% Pass)',
+          className: 'bg-amber-100 text-amber-800 border-amber-200',
+        };
       case 'SUFFICIENT_EVIDENCE':
         return {
           label: 'Sufficient Evidence',
           className: 'bg-blue-100 text-blue-800 border-blue-200',
+        };
+      case 'MONITORING':
+      default:
+        return {
+          label: 'Monitoring Required',
+          className: 'bg-slate-100 text-slate-800 border-slate-200',
         };
     }
   };
@@ -1056,7 +1068,15 @@ export const ContinuousImprovementHubPage: React.FC = () => {
 
           {trainingPlansQuery.isLoading ? (
             <div className="p-12 text-center text-gray-500">Loading training plans...</div>
-          ) : trainingPlansQuery.data?.length === 0 ? (
+          ) : trainingPlansQuery.isError ? (
+            <div className="p-6 bg-rose-50 text-rose-700 rounded-xl border border-rose-200">
+              Error loading training plans. Verify permissions.
+            </div>
+          ) : !trainingPlansQuery.data || !Array.isArray(trainingPlansQuery.data.training_plans) ? (
+            <div className="p-6 bg-amber-50 text-amber-800 rounded-xl border border-amber-200">
+              Unexpected response format from training plans service.
+            </div>
+          ) : trainingPlansQuery.data.training_plans.length === 0 ? (
             <div className="bg-white p-12 text-center rounded-xl border border-gray-200">
               <GraduationCap className="w-12 h-12 text-gray-400 mx-auto mb-3" />
               <h4 className="text-base font-bold text-gqt-navy">No Training Plans Initiated</h4>
@@ -1065,8 +1085,40 @@ export const ContinuousImprovementHubPage: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {trainingPlansQuery.data?.map((plan) => (
+            <div className="space-y-6">
+              {trainingPlansQuery.data.summary && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                    <span className="text-xs font-semibold text-gray-500">Total Plans</span>
+                    <div className="text-2xl font-extrabold text-gqt-navy mt-1">
+                      {trainingPlansQuery.data.summary.total_plans}
+                    </div>
+                  </div>
+                  <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                    <span className="text-xs font-semibold text-amber-700">Proposed / Pending</span>
+                    <div className="text-2xl font-extrabold text-amber-600 mt-1">
+                      {trainingPlansQuery.data.summary.status_counts?.PROPOSED || 0}
+                    </div>
+                  </div>
+                  <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                    <span className="text-xs font-semibold text-gqt-blue">Approved & Active</span>
+                    <div className="text-2xl font-extrabold text-gqt-blue mt-1">
+                      {(trainingPlansQuery.data.summary.status_counts?.APPROVED || 0) +
+                        (trainingPlansQuery.data.summary.status_counts?.IN_PROGRESS || 0) +
+                        (trainingPlansQuery.data.summary.status_counts?.SCHEDULED || 0)}
+                    </div>
+                  </div>
+                  <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                    <span className="text-xs font-semibold text-emerald-700">Completed</span>
+                    <div className="text-2xl font-extrabold text-emerald-600 mt-1">
+                      {trainingPlansQuery.data.summary.status_counts?.COMPLETED || 0}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {trainingPlansQuery.data.training_plans.map((plan) => (
                 <div
                   key={plan.id}
                   className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between"
@@ -1178,6 +1230,7 @@ export const ContinuousImprovementHubPage: React.FC = () => {
                   </div>
                 </div>
               ))}
+              </div>
             </div>
           )}
         </div>

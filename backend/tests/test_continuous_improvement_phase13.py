@@ -945,3 +945,172 @@ def test_10_continuous_improvement_diagnostics_scan(api_client, admin_user, phas
     assert "UNRESOLVED_OFFERS" in check_codes
     assert "MISSING_STUDENT_FEEDBACK" in check_codes
     assert "OVERDUE_TRAINING_PLANS" in check_codes
+
+
+# =========================================================================
+# TEST 11: Training Plans Canonical API Contract (Defect A Integration Test)
+# =========================================================================
+def test_11_training_plans_canonical_api_contract(api_client, admin_user, trainer_user, phase13_dataset):
+    """Verify Training Plans API returns canonical dictionary with summary + training_plans list."""
+    api_client.force_authenticate(user=admin_user)
+
+    # Create test training plans
+    TrainingPlan.objects.create(
+        title="Python Fundamentals Workshop",
+        target_skill="Python",
+        motivation_evidence="Recruiter feedback highlighted Python syntax gaps.",
+        target_cohort="2026 Computer Science",
+        proposed_objectives="Cover OOP, generators, decorators.",
+        planned_sessions_count=4,
+        responsible_trainer=trainer_user,
+        planned_start_date=date.today(),
+        planned_end_date=date.today() + timedelta(days=14),
+        status=TrainingPlanStatus.PROPOSED,
+        expected_outcome=">= 80% pass on diagnostic assessment.",
+        created_by=admin_user,
+    )
+
+    # 1. Fetch training plans
+    response = api_client.get("/api/v1/continuous-improvement/training-plans/")
+    assert response.status_code == status.HTTP_200_OK
+
+    # Defect A Contract Verification: Must return a dictionary, NOT a bare list
+    assert isinstance(response.data, dict), "Root response must be a dictionary containing summary and training_plans"
+    assert "summary" in response.data, "Response must include summary statistics"
+    assert "training_plans" in response.data, "Response must include training_plans array"
+    assert "generated_at" in response.data
+
+    # Verify Summary Structure
+    summary = response.data["summary"]
+    assert "total_plans" in summary
+    assert "status_counts" in summary
+    assert summary["total_plans"] >= 1
+    assert isinstance(summary["status_counts"], dict)
+
+    # Verify Array Item Structure
+    plans = response.data["training_plans"]
+    assert isinstance(plans, list), "training_plans must be an iterable list"
+    assert len(plans) >= 1
+
+    plan_item = plans[0]
+    required_keys = [
+        "id", "plan_code", "title", "target_skill", "motivation_evidence",
+        "evidence_rationale", "target_cohort", "proposed_objectives",
+        "status", "responsible_trainer_name", "created_at"
+    ]
+    for key in required_keys:
+        assert key in plan_item, f"Plan item missing canonical key: '{key}'"
+    assert plan_item["plan_code"].startswith("TRP-"), "Plan code must follow standard TRP prefix"
+
+    # 2. Test Plan Creation with UI form payload (evidence_rationale + target_cohort_year)
+    create_payload = {
+        "title": "SQL Acceleration Remedial",
+        "target_skill": "SQL / Database",
+        "evidence_rationale": "Database query optimization was weak in mock interviews.",
+        "target_cohort_year": 2026,
+        "target_department": "Computer Science",
+        "proposed_objectives": "Indexing, window functions, and query explain plans.",
+        "planned_activities": "4 lab drills.",
+        "expected_outcome": ">= 75% score on SQL benchmark.",
+    }
+    create_res = api_client.post("/api/v1/continuous-improvement/training-plans/", create_payload, format="json")
+    assert create_res.status_code == status.HTTP_201_CREATED
+    assert "id" in create_res.data
+    assert create_res.data["title"] == "SQL Acceleration Remedial"
+
+
+# =========================================================================
+# TEST 12: Feedback Analytics Canonical API Contract & Privacy (Defect B Integration Test)
+# =========================================================================
+def test_12_feedback_analytics_canonical_api_contract_and_privacy(api_client, admin_user, phase13_dataset):
+    """Verify Feedback Analytics returns unified canonical schema and enforces k-anonymity privacy."""
+    api_client.force_authenticate(user=admin_user)
+
+    response = api_client.get("/api/v1/continuous-improvement/feedback/")
+    assert response.status_code == status.HTTP_200_OK
+    data = response.data
+
+    # Defect B Contract Verification: Must include canonical UI analytics keys
+    assert "kpi_summary" in data, "Response must include kpi_summary object"
+    assert "recruiter_ratings" in data, "Response must include recruiter_ratings object"
+    assert "student_difficulty_breakdown" in data, "Response must include student_difficulty_breakdown array"
+    assert "trainer_readiness_breakdown" in data, "Response must include trainer_readiness_breakdown array"
+    assert "recruiter_remarks_sample" in data, "Response must include recruiter_remarks_sample array"
+    assert "student_suggestions_sample" in data, "Response must include student_suggestions_sample array"
+
+    # Verify KPI Summary Fields
+    kpi = data["kpi_summary"]
+    assert "total_recruiter_evaluations" in kpi
+    assert "total_student_experiences" in kpi
+    assert "total_trainer_assessments" in kpi
+    assert "avg_recruiter_tech_rating" in kpi
+    assert "avg_recruiter_comm_rating" in kpi
+    assert "avg_recruiter_satisfaction" in kpi
+    assert "avg_trainer_effectiveness" in kpi
+
+    # Verify Breakdowns
+    diff_breakdown = data["student_difficulty_breakdown"]
+    assert isinstance(diff_breakdown, list)
+    for d in diff_breakdown:
+        assert "difficulty" in d and "count" in d and "percentage" in d
+
+    readiness_breakdown = data["trainer_readiness_breakdown"]
+    assert isinstance(readiness_breakdown, list)
+    for r in readiness_breakdown:
+        assert "readiness" in r and "count" in r and "percentage" in r
+
+    # Privacy & K-Anonymity Verification:
+    # If student count < MINIMUM_GROUP_ANONYMITY_THRESHOLD (3), small group masking must be active
+    assert "anonymity_rule_enforced" in data
+    assert data["anonymity_rule_enforced"] is True
+    if kpi["total_student_experiences"] < 3:
+        assert data["is_small_group_masked"] is True
+        for sug in data["student_suggestions_sample"]:
+            assert sug["is_anonymous"] is True, "Student identity must be masked when cohort size < 3"
+
+    # Verify Backward Compatibility
+    assert "hr_feedback" in data
+    assert "student_feedback" in data
+    assert "trainer_feedback" in data
+
+
+# =========================================================================
+# TEST 13: Skill-Gap Analytics Canonical API Contract (Defect C Integration Test)
+# =========================================================================
+def test_13_skill_gap_canonical_api_contract(api_client, admin_user, phase13_dataset):
+    """Verify Skill Gap Analytics returns canonical top-level counters and matrix row fields."""
+    api_client.force_authenticate(user=admin_user)
+
+    response = api_client.get("/api/v1/continuous-improvement/skill-gaps/")
+    assert response.status_code == status.HTTP_200_OK
+    data = response.data
+
+    # Defect C Contract Verification: Top-level summary counters
+    assert "total_market_demand_skills" in data, "Must provide total_market_demand_skills at top level"
+    assert "total_assessed_skills" in data, "Must provide total_assessed_skills at top level"
+    assert "unassessed_high_demand_skills" in data, "Must provide unassessed_high_demand_skills at top level"
+    assert "critical_gap_skills" in data, "Must provide critical_gap_skills at top level"
+    assert "ai_disclaimer" in data, "Must provide deterministic methodology disclaimer"
+    assert "skill_matrix" in data, "Must provide skill_matrix array"
+
+    matrix = data["skill_matrix"]
+    assert isinstance(matrix, list)
+    assert len(matrix) >= 1
+
+    # Verify each row has both canonical keys and backend attributes
+    row = matrix[0]
+    required_row_keys = [
+        "skill", "skill_name", "jobs_requiring", "market_demand_jobs_count",
+        "companies_requiring", "total_attempts", "passed_attempts",
+        "pass_percentage", "coverage_category", "gap_status", "recommendation"
+    ]
+    for rk in required_row_keys:
+        assert rk in row, f"Skill matrix row missing key: '{rk}'"
+
+    # Check valid coverage category enum
+    valid_categories = [
+        "EVALUATED_WELL", "UNASSESSED_DEMAND", "CRITICAL_GAP",
+        "SUFFICIENT_EVIDENCE", "MODERATE_GAP", "STRENGTH", "MONITORING"
+    ]
+    assert row["coverage_category"] in valid_categories
+

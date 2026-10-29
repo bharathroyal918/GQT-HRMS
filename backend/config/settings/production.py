@@ -36,7 +36,41 @@ if not ALLOWED_HOSTS or "*" in ALLOWED_HOSTS or set(ALLOWED_HOSTS) <= {"localhos
         "fully qualified domain names. Wildcards and localhost-only lists are prohibited."
     )
 
-# Invariant 3: Fail-closed on missing or insecure database credentials
+# Invariant 3: Fail-closed on missing, insecure, or non-PostgreSQL database credentials
+prod_db_url = env.str("DATABASE_URL", default="")
+if prod_db_url and not ("sqlite" in prod_db_url.lower() and env.bool("USE_SQLITE_FOR_LOCAL_DEV", default=False)):
+    parsed_db = env.db_url("DATABASE_URL")
+    if "supabase.com" in parsed_db.get("HOST", "") or parsed_db.get("ENGINE") == "django.db.backends.postgresql":
+        parsed_db.setdefault("OPTIONS", {})
+        parsed_db["OPTIONS"]["sslmode"] = env.str("DB_SSLMODE", default="require")
+        parsed_db["OPTIONS"]["connect_timeout"] = env.int("DB_CONNECT_TIMEOUT", default=10)
+        is_pooler = "pooler" in parsed_db.get("HOST", "") or str(parsed_db.get("PORT", "")) in ("6543", "6432")
+        if is_pooler or env.bool("DB_DISABLE_PREPARED_STATEMENTS", default=False):
+            parsed_db["OPTIONS"]["prepare_threshold"] = None
+        parsed_db["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=0 if is_pooler else 60)
+    DATABASES = {"default": parsed_db}
+elif env.str("DB_NAME", default="") and not env.bool("USE_SQLITE_FOR_LOCAL_DEV", default=False):
+    is_pooler = "pooler" in env.str("DB_HOST", "") or str(env.str("DB_PORT", default="5432")) in ("6543", "6432")
+    db_options = {
+        "sslmode": env("DB_SSLMODE", default="require"),
+        "connect_timeout": env.int("DB_CONNECT_TIMEOUT", default=10),
+    }
+    if is_pooler or env.bool("DB_DISABLE_PREPARED_STATEMENTS", default=False):
+        db_options["prepare_threshold"] = None
+
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": env("DB_NAME"),
+            "USER": env("DB_USER", default="postgres"),
+            "PASSWORD": env("DB_PASSWORD", default=""),
+            "HOST": env("DB_HOST", default="localhost"),
+            "PORT": env("DB_PORT", default="5432"),
+            "CONN_MAX_AGE": env.int("DB_CONN_MAX_AGE", default=0 if is_pooler else 60),
+            "OPTIONS": db_options,
+        }
+    }
+
 db_config = DATABASES.get("default", {})
 db_pass = env.str("DB_PASSWORD", default=str(db_config.get("PASSWORD", "")))
 if not db_pass or db_pass.lower() in ("change_me", "postgres", "password", "root", "admin", "123456"):
@@ -45,15 +79,21 @@ if not db_pass or db_pass.lower() in ("change_me", "postgres", "password", "root
         "with a strong, non-default credential."
     )
 
+if db_config.get("ENGINE") != "django.db.backends.postgresql":
+    raise ImproperlyConfigured(
+        "Production Security Violation: Production database ENGINE must be "
+        "'django.db.backends.postgresql' (PostgreSQL 16 on Supabase). SQLite is strictly prohibited in production."
+    )
+
 # Invariant 4: Mandatory HTTPS Cookie Security
 SESSION_COOKIE_SECURE = env.bool("SESSION_COOKIE_SECURE", default=True)
 CSRF_COOKIE_SECURE = env.bool("CSRF_COOKIE_SECURE", default=True)
 JWT_COOKIE_SECURE = env.bool("JWT_COOKIE_SECURE", default=True)
 
-if not SESSION_COOKIE_SECURE or not CSRF_COOKIE_SECURE:
+if not SESSION_COOKIE_SECURE or not CSRF_COOKIE_SECURE or not JWT_COOKIE_SECURE:
     raise ImproperlyConfigured(
-        "Production Security Violation: SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE "
-        "must be enabled in production."
+        "Production Security Violation: SESSION_COOKIE_SECURE, CSRF_COOKIE_SECURE, "
+        "and JWT_COOKIE_SECURE must be enabled in production."
     )
 
 # Invariant 5: Transport Layer Security & Hardening Headers
@@ -63,4 +103,22 @@ SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=31536000)  # 1 year
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = env.bool("SECURE_HSTS_PRELOAD", default=False)
 SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = env.str("SECURE_REFERRER_POLICY", default="strict-origin-when-cross-origin")
 X_FRAME_OPTIONS = "DENY"
+
+# Invariant 6: Production Communication Provider Adapters
+EMAIL_BACKEND = env.str("DJANGO_EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = env.str("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=False)
+EMAIL_HOST_USER = env.str("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env.str("EMAIL_HOST_PASSWORD", default="")
+DEFAULT_FROM_EMAIL = env.str("DEFAULT_FROM_EMAIL", default="noreply@gqt.internal")
+
+EMAIL_PROVIDER_BACKEND = env.str("EMAIL_PROVIDER_BACKEND", default="smtp")
+WHATSAPP_PROVIDER_BACKEND = env.str("WHATSAPP_PROVIDER_BACKEND", default="meta")
+WHATSAPP_API_TOKEN = env.str("WHATSAPP_API_TOKEN", default="")
+WHATSAPP_PHONE_NUMBER_ID = env.str("WHATSAPP_PHONE_NUMBER_ID", default="")
+WHATSAPP_WEBHOOK_VERIFY_TOKEN = env.str("WHATSAPP_WEBHOOK_VERIFY_TOKEN", default="")
+WHATSAPP_WEBHOOK_APP_SECRET = env.str("WHATSAPP_WEBHOOK_APP_SECRET", default="")

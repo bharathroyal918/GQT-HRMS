@@ -866,3 +866,324 @@ def test_27_api_unauthenticated_requests_denied(api_client, approved_job):
     assert api_client.get("/api/v1/students/profile/me/").status_code == 401
     assert api_client.post("/api/v1/students/resumes/upload/").status_code == 401
     assert api_client.get(f"/api/v1/students/cohorts/{approved_job.id}/").status_code == 401
+
+
+@pytest.mark.django_db
+def test_28_duplicate_student_application_prevented(api_client, approved_job):
+    user, profile = register_student(
+        email="dup_check@gqt.edu",
+        password="Password123!",
+        roll_number="1GQT21CS888",
+        first_name="Duplicate",
+        last_name="Tester",
+        college_name="GQT",
+        degree="B.Tech",
+        department="Computer Science",
+        graduation_year=2025,
+        cgpa=Decimal("8.00"),
+        active_backlogs=0,
+    )
+    upload_student_resume(profile, make_valid_pdf_file("dup_test_resume.pdf"))
+
+    # First application succeeds
+    app1 = apply_student_for_job(profile, str(approved_job.id), user=user)
+    assert app1.status == StudentApplicationStatus.ELIGIBLE
+
+    # Second direct service call raises ValidationError
+    with pytest.raises(ValidationError) as exc:
+        apply_student_for_job(profile, str(approved_job.id), user=user)
+    assert "already submitted an application" in str(exc.value)
+
+    # API endpoint also returns 400 Bad Request
+    api_client.force_authenticate(user=user)
+    resp = api_client.post(
+        "/api/v1/students/applications/apply/",
+        {"job_requirement_id": str(approved_job.id)},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert "already submitted an application" in resp.data.get("detail", "")
+
+
+@pytest.mark.django_db
+def test_29_student_publications_visibility_and_extended_metadata(
+    api_client, approved_job, draft_job, placement_officer, admin_user
+):
+    user, profile = register_student(
+        email="viewer@gqt.edu",
+        password="Password123!",
+        roll_number="1GQT21CS999",
+        first_name="Drive",
+        last_name="Viewer",
+        college_name="GQT",
+        degree="B.Tech",
+        department="Computer Science",
+        graduation_year=2025,
+        cgpa=Decimal("8.50"),
+        active_backlogs=0,
+    )
+
+    # 1. Publish approved job
+    pub_active = publish_job_notification(
+        job_requirement_id=str(approved_job.id),
+        channel=JobPublicationChannel.PORTAL,
+        target_audience="2025 Batch - CS/IS",
+        published_by=placement_officer,
+    )
+
+    # 2. Publish another job but mark publication CANCELLED
+    pub_cancelled = publish_job_notification(
+        job_requirement_id=str(approved_job.id),
+        channel=JobPublicationChannel.WHATSAPP,
+        target_audience="WhatsApp Group",
+        published_by=placement_officer,
+    )
+    pub_cancelled.status = JobPublicationStatus.CANCELLED
+    pub_cancelled.save(update_fields=["status"])
+
+    # Student requests publications
+    api_client.force_authenticate(user=user)
+    resp = api_client.get("/api/v1/students/publications/")
+    assert resp.status_code == 200
+
+    pub_ids = [item["id"] for item in resp.data]
+    assert str(pub_active.id) in pub_ids
+    # Cancelled publication must NOT be shown to student
+    assert str(pub_cancelled.id) not in pub_ids
+
+    # Check that extended job requirement metadata fields are present
+    active_item = next(item for item in resp.data if item["id"] == str(pub_active.id))
+    assert active_item["location"] == "Bangalore"
+    assert Decimal(str(active_item["min_salary"])) == Decimal("450000.00")
+    assert Decimal(str(active_item["max_salary"])) == Decimal("650000.00")
+    assert active_item["salary_currency"] == "INR"
+    assert active_item["employment_type"] == EmploymentType.FULL_TIME
+    assert "Full-Time" in active_item["employment_type_display"]
+    assert "registration_deadline" in active_item
+    assert "min_cgpa" in active_item
+    assert active_item["job_status"] == JobRequirementStatus.APPROVED
+    assert active_item["job_is_archived"] is False
+
+    # Staff member can see all publications including cancelled ones
+    api_client.force_authenticate(user=placement_officer)
+    staff_resp = api_client.get("/api/v1/students/publications/")
+    assert staff_resp.status_code == 200
+    staff_pub_ids = [item["id"] for item in staff_resp.data]
+    assert str(pub_active.id) in staff_pub_ids
+    assert str(pub_cancelled.id) in staff_pub_ids
+
+
+@pytest.mark.django_db
+def test_30_eligible_drives_discovery_without_creating_applications(
+    api_client, approved_job, placement_officer
+):
+    """Requirement 1, 4 & 10: Eligible student can retrieve eligible published drives without creating applications."""
+    user, profile = register_student(
+        email="eligible.student@gqt.edu",
+        password="Password123!",
+        roll_number="1GQT21CS888",
+        first_name="Eligible",
+        last_name="Candidate",
+        college_name="GQT Institute of Technology",
+        degree="B.Tech",
+        department="Computer Science",
+        graduation_year=2025,
+        cgpa=Decimal("8.50"),
+        active_backlogs=0,
+    )
+
+    # Approved job criteria: min_cgpa=6.50, CS/IS, 2025 batch
+    approved_job.min_cgpa = Decimal("6.50")
+    approved_job.eligibility_criteria = "Computer Science and Information Science branches. 2025 passing batch. 0 active backlogs."
+    approved_job.save(update_fields=["min_cgpa", "eligibility_criteria"])
+
+    # Publish job
+    pub = publish_job_notification(
+        job_requirement_id=str(approved_job.id),
+        channel=JobPublicationChannel.PORTAL,
+        target_audience="2025 Batch - CS/IS",
+        published_by=placement_officer,
+    )
+
+    api_client.force_authenticate(user=user)
+
+    # 1. Dedicated eligible endpoint
+    resp = api_client.get("/api/v1/students/publications/eligible/")
+    assert resp.status_code == 200
+    assert len(resp.data) == 1
+    item = resp.data[0]
+    assert item["id"] == str(pub.id)
+    assert item["eligibility_preview"] is not None
+    assert item["eligibility_preview"]["passed"] is True
+    assert item["eligibility_preview"]["status"] == "ELIGIBLE"
+
+    # 2. Query param ?eligible_only=true on base endpoint
+    resp_filter = api_client.get("/api/v1/students/publications/?eligible_only=true")
+    assert resp_filter.status_code == 200
+    assert len(resp_filter.data) == 1
+    assert resp_filter.data[0]["id"] == str(pub.id)
+
+    # 3. CRITICAL: Confirm zero applications created merely by evaluating eligibility
+    assert StudentApplication.objects.filter(student=profile).count() == 0
+    assert StudentApplication.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_31_ineligible_student_and_rule_evaluation_checks(
+    api_client, approved_job, placement_officer
+):
+    """Requirement 2 & 3: Ineligible student is excluded from eligible drives across CGPA, branch, backlogs, batch."""
+    # Student with low CGPA (6.00) and Civil branch and 1 backlog
+    ineligible_user, profile = register_student(
+        email="ineligible.student@gqt.edu",
+        password="Password123!",
+        roll_number="1GQT21CV001",
+        first_name="Civil",
+        last_name="Student",
+        college_name="GQT Institute",
+        degree="B.Tech",
+        department="Civil Engineering",
+        graduation_year=2026,
+        cgpa=Decimal("6.00"),
+        active_backlogs=1,
+    )
+
+    approved_job.min_cgpa = Decimal("7.50")
+    approved_job.eligibility_criteria = "Computer Science only. 2025 batch. 0 active backlogs."
+    approved_job.save(update_fields=["min_cgpa", "eligibility_criteria"])
+
+    pub = publish_job_notification(
+        job_requirement_id=str(approved_job.id),
+        channel=JobPublicationChannel.PORTAL,
+        target_audience="2025 Batch - CS",
+        published_by=placement_officer,
+    )
+
+    api_client.force_authenticate(user=ineligible_user)
+
+    # Ineligible student sees 0 results in eligible drives
+    resp_eligible = api_client.get("/api/v1/students/publications/eligible/")
+    assert resp_eligible.status_code == 200
+    assert len(resp_eligible.data) == 0
+
+    resp_filter = api_client.get("/api/v1/students/publications/?eligible_only=true")
+    assert resp_filter.status_code == 200
+    assert len(resp_filter.data) == 0
+
+    # In general list, drive is visible but eligibility_preview reflects ineligibility
+    resp_all = api_client.get("/api/v1/students/publications/")
+    assert resp_all.status_code == 200
+    assert len(resp_all.data) == 1
+    preview = resp_all.data[0]["eligibility_preview"]
+    assert preview is not None
+    assert preview["passed"] is False
+    assert preview["status"] == "INELIGIBLE"
+
+    # Preview endpoint returns failure explanations for the failed criteria
+    prev_resp = api_client.get(f"/api/v1/students/jobs/{approved_job.id}/eligibility-preview/")
+    assert prev_resp.status_code == 200
+    assert prev_resp.data["passed"] is False
+    assert prev_resp.data["status"] == "INELIGIBLE"
+    details = {d["criterion"]: d for d in prev_resp.data["details"]}
+    assert details["Minimum Academic CGPA"]["passed"] is False
+    assert details["Discipline / Branch"]["passed"] is False
+    assert details["Active Arrears / Backlogs"]["passed"] is False
+    assert details["Graduation Passing Batch"]["passed"] is False
+
+
+@pytest.mark.django_db
+def test_32_eligibility_discovery_security_isolation_and_visibility(
+    api_client, approved_job, draft_job, placement_officer, admin_user
+):
+    """Requirement 5, 6 & 7: Security isolation, role authorization, and unapproved/archived exclusion."""
+    user, profile = register_student(
+        email="security.student@gqt.edu",
+        password="Password123!",
+        roll_number="1GQT21CS777",
+        first_name="Sec",
+        last_name="Student",
+        college_name="GQT",
+        degree="B.Tech",
+        department="Computer Science",
+        graduation_year=2025,
+        cgpa=Decimal("9.00"),
+        active_backlogs=0,
+    )
+
+    # 1. Unauthenticated request rejected
+    api_client.force_authenticate(user=None)
+    assert api_client.get("/api/v1/students/publications/eligible/").status_code == 401
+    assert api_client.get(f"/api/v1/students/jobs/{approved_job.id}/eligibility-preview/").status_code == 401
+
+    # 2. Staff without student profile cannot access student discovery endpoints
+    api_client.force_authenticate(user=placement_officer)
+    assert api_client.get("/api/v1/students/publications/eligible/").status_code == 403
+    assert api_client.get(f"/api/v1/students/jobs/{approved_job.id}/eligibility-preview/").status_code == 403
+
+    # 3. Draft/Unapproved or Archived jobs excluded
+    api_client.force_authenticate(user=user)
+    # Draft job
+    assert api_client.get(f"/api/v1/students/jobs/{draft_job.id}/eligibility-preview/").status_code == 404
+
+    # Approved job but archived
+    approved_job.is_archived = True
+    approved_job.save(update_fields=["is_archived"])
+    assert api_client.get(f"/api/v1/students/jobs/{approved_job.id}/eligibility-preview/").status_code == 404
+
+
+@pytest.mark.django_db
+def test_33_application_submission_independent_reevaluation_and_duplicate_protection(
+    api_client, approved_job, placement_officer
+):
+    """Requirement 8 & 9: Application endpoint independently reevaluates eligibility and enforces duplicate prevention."""
+    user, profile = register_student(
+        email="apply.reeval@gqt.edu",
+        password="Password123!",
+        roll_number="1GQT21CS666",
+        first_name="Reeval",
+        last_name="Student",
+        college_name="GQT",
+        degree="B.Tech",
+        department="Computer Science",
+        graduation_year=2025,
+        cgpa=Decimal("8.50"),
+        active_backlogs=0,
+    )
+    upload_student_resume(profile, make_valid_pdf_file(), user=user)
+
+    approved_job.min_cgpa = Decimal("7.00")
+    approved_job.eligibility_criteria = "Computer Science. 2025 batch. 0 active backlogs."
+    approved_job.save(update_fields=["min_cgpa", "eligibility_criteria"])
+
+    publish_job_notification(
+        job_requirement_id=str(approved_job.id),
+        channel=JobPublicationChannel.PORTAL,
+        target_audience="2025 Batch - CS",
+        published_by=placement_officer,
+    )
+
+    api_client.force_authenticate(user=user)
+
+    # Preview does not create application
+    preview_resp = api_client.get(f"/api/v1/students/jobs/{approved_job.id}/eligibility-preview/")
+    assert preview_resp.status_code == 200
+    assert StudentApplication.objects.filter(student=profile).count() == 0
+
+    # Submit application
+    app_resp = api_client.post(
+        "/api/v1/students/applications/apply/",
+        {"job_requirement_id": str(approved_job.id)},
+        format="json",
+    )
+    assert app_resp.status_code == 201
+    assert app_resp.data["status"] == "ELIGIBLE"
+    assert StudentApplication.objects.filter(student=profile).count() == 1
+
+    # Duplicate submission rejected
+    dup_resp = api_client.post(
+        "/api/v1/students/applications/apply/",
+        {"job_requirement_id": str(approved_job.id)},
+        format="json",
+    )
+    assert dup_resp.status_code == 400
+    assert "already submitted an application" in dup_resp.data.get("detail", "")

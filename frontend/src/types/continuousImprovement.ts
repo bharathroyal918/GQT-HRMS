@@ -144,6 +144,7 @@ export interface TrainerImprovementArea {
 export interface FeedbackIntelligenceResponse {
   anonymity_rule_enforced: boolean;
   minimum_group_threshold: number;
+  is_small_group_masked?: boolean;
   kpi_summary: FeedbackKpiSummary;
   recruiter_ratings: {
     avg_technical: number;
@@ -157,6 +158,35 @@ export interface FeedbackIntelligenceResponse {
   student_suggestions_sample: StudentSuggestion[];
   trainer_improvement_areas_sample: TrainerImprovementArea[];
   anonymity_notice?: string;
+  hr_feedback?: {
+    total_responses: number;
+    avg_technical_rating: number;
+    avg_communication_rating: number;
+    avg_hiring_satisfaction: number;
+    candidate_quality_distribution: Record<string, number>;
+    recent_observations: Array<{
+      company_name: string;
+      candidate_quality: string;
+      technical_rating: number;
+      communication_rating: number;
+      satisfaction_rating: number;
+      remarks: string;
+      date: string;
+    }>;
+  };
+  student_feedback?: {
+    total_responses: number;
+    difficulty_distribution: Record<string, number>;
+    is_small_group_masked: boolean;
+    anonymity_threshold: number;
+    recent_experiences: Array<any>;
+  };
+  trainer_feedback?: {
+    total_evaluations: number;
+    avg_training_effectiveness: number;
+    readiness_distribution: Record<string, number>;
+    recurring_improvement_areas: Array<any>;
+  };
   generated_at: string;
 }
 
@@ -172,29 +202,61 @@ export type SkillCoverageCategory =
   | 'EVALUATED_WELL'
   | 'UNASSESSED_DEMAND'
   | 'CRITICAL_GAP'
-  | 'SUFFICIENT_EVIDENCE';
+  | 'SUFFICIENT_EVIDENCE'
+  | 'MODERATE_GAP'
+  | 'STRENGTH'
+  | 'MONITORING';
 
 export interface SkillGapItem {
   skill: string;
+  skill_name?: string;
   jobs_requiring: number;
+  market_demand_jobs_count?: number;
   companies_requiring: number;
+  jobs_referencing?: string[];
   assessment_tests_count: number;
   total_attempts: number;
+  assessment_attempts_count?: number;
   passed_attempts: number;
   pass_percentage: number;
-  student_skill_profiles_count: number;
-  mock_evaluations_count: number;
-  hr_feedback_count: number;
+  assessment_pass_rate?: number | null;
+  average_assessment_score?: number | null;
+  student_skill_profiles_count?: number;
+  mock_evaluations_count?: number;
+  hr_feedback_count?: number;
   coverage_category: SkillCoverageCategory;
+  gap_status?: string;
+  data_coverage_level?: string;
+  status_label?: string;
+  severity?: string;
   recommendation: string;
+  evidence_based_recommendation?: string;
+}
+
+export interface SkillGapSummary {
+  total_skills_evaluated: number;
+  critical_gaps_count: number;
+  unassessed_demand_count: number;
+  moderate_gaps_count: number;
+  strengths_count: number;
+  total_jobs_analyzed: number;
+  total_assessment_attempts_analyzed: number;
+  total_mock_evaluations_analyzed: number;
+  mock_benchmarks?: {
+    avg_technical_competence: number;
+    avg_problem_solving: number;
+    avg_communication_clarity: number;
+  };
 }
 
 export interface SkillGapMatrixResponse {
   ai_disclaimer: string;
+  methodology_disclaimer?: string;
   total_market_demand_skills: number;
   total_assessed_skills: number;
   unassessed_high_demand_skills: number;
   critical_gap_skills: number;
+  summary?: SkillGapSummary;
   skill_matrix: SkillGapItem[];
   generated_at: string;
 }
@@ -217,27 +279,47 @@ export interface TrainingPlan {
   plan_code: string;
   target_skill: string;
   evidence_rationale: string;
+  motivation_evidence?: string;
+  target_cohort?: string;
   target_cohort_year?: number | null;
-  target_department: string;
-  target_eligible_count: number;
-  enrolled_students_count: number;
+  target_department?: string;
+  target_eligible_count?: number;
+  enrolled_students_count?: number;
   proposed_objectives: string;
-  planned_activities: string;
+  planned_sessions_count?: number;
+  planned_activities?: string;
   responsible_trainer?: string | null;
+  responsible_trainer_id?: string;
   responsible_trainer_name: string;
+  planned_start_date?: string | null;
+  planned_end_date?: string | null;
   start_date?: string | null;
   end_date?: string | null;
   expected_outcome: string;
   status: TrainingPlanStatus;
+  status_display?: string;
   approved_by?: string | null;
   approved_by_name: string | null;
   approved_at?: string | null;
   approval_notes: string;
   actual_completion_results: string;
+  cancellation_reason?: string;
   created_by?: string | null;
   created_by_name: string;
   created_at: string;
   updated_at: string;
+  linked_actions_count?: number;
+}
+
+export interface TrainingPlanSummary {
+  total_plans: number;
+  status_counts: Record<string, number>;
+}
+
+export interface TrainingPlansResponse {
+  summary: TrainingPlanSummary;
+  training_plans: TrainingPlan[];
+  generated_at: string;
 }
 
 export interface TrainingPlanCreatePayload {

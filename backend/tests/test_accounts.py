@@ -8,10 +8,10 @@ from django.core.management import call_command
 from django.db import IntegrityError
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
-from rest_framework import status
+from rest_framework import exceptions, status
 from rest_framework.test import APIClient
 from apps.accounts.models import Role, RoleCatalog, UserRoleAssignment
-from apps.accounts.services import assign_roles_to_user
+from apps.accounts.services import assign_roles_to_user, update_user_status
 from apps.core.models import AuditLog
 
 User = get_user_model()
@@ -495,3 +495,348 @@ def test_24_account_deactivation_prevents_active_sessions(api_client, standard_u
     # Previous token is now rejected because account is inactive
     blocked_resp = authed_client.get("/api/v1/auth/me/")
     assert blocked_resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+# ==============================================================================
+# Step 6: Phase 15 Workstream 2 User & Role Administration Tests (25-31)
+# ==============================================================================
+
+@pytest.mark.django_db
+def test_25_admin_users_list_search_filter_and_ordering(api_client, admin_user, seed_roles, test_password):
+    """Verify admin can list users with server-side search, role filter, status filter, and ordering."""
+    u1 = User.objects.create_user(
+        email="alice.trainer@gqt.local",
+        password=test_password,
+        first_name="Alice",
+        last_name="Trainer",
+        is_active=True,
+    )
+    assign_roles_to_user(u1, [RoleCatalog.TRAINER])
+
+    u2 = User.objects.create_user(
+        email="bob.inactive@gqt.local",
+        password=test_password,
+        first_name="Bob",
+        last_name="Inactive",
+        is_active=False,
+    )
+    assign_roles_to_user(u2, [RoleCatalog.STUDENT])
+
+    api_client.force_authenticate(user=admin_user)
+
+    # 1. Base list
+    resp = api_client.get("/api/v1/auth/users/")
+    assert resp.status_code == status.HTTP_200_OK
+    assert "data" in resp.data
+    emails = [item["email"] for item in resp.data["data"]]
+    assert "alice.trainer@gqt.local" in emails
+    assert "bob.inactive@gqt.local" in emails
+
+    # 2. Search by name
+    search_resp = api_client.get("/api/v1/auth/users/?search=Alice")
+    assert search_resp.status_code == status.HTTP_200_OK
+    search_emails = [item["email"] for item in search_resp.data["data"]]
+    assert "alice.trainer@gqt.local" in search_emails
+    assert "bob.inactive@gqt.local" not in search_emails
+
+    # 3. Filter by role
+    role_resp = api_client.get(f"/api/v1/auth/users/?role={RoleCatalog.TRAINER}")
+    assert role_resp.status_code == status.HTTP_200_OK
+    role_emails = [item["email"] for item in role_resp.data["data"]]
+    assert "alice.trainer@gqt.local" in role_emails
+    assert "bob.inactive@gqt.local" not in role_emails
+
+    # 4. Filter by status
+    status_resp = api_client.get("/api/v1/auth/users/?status=inactive")
+    assert status_resp.status_code == status.HTTP_200_OK
+    status_emails = [item["email"] for item in status_resp.data["data"]]
+    assert "bob.inactive@gqt.local" in status_emails
+    assert "alice.trainer@gqt.local" not in status_emails
+
+
+@pytest.mark.django_db
+def test_26_admin_update_permitted_profile_fields(api_client, admin_user, standard_user):
+    """Verify administrator can update permitted user profile fields and generate an audit log."""
+    api_client.force_authenticate(user=admin_user)
+
+    payload = {
+        "first_name": "Janet",
+        "last_name": "Williams",
+        "phone_number": "+91 99999 11111",
+    }
+    resp = api_client.patch(
+        f"/api/v1/auth/users/{standard_user.id}/",
+        payload,
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_200_OK
+    assert resp.data["first_name"] == "Janet"
+    assert resp.data["last_name"] == "Williams"
+    assert resp.data["phone_number"] == "+91 99999 11111"
+
+    standard_user.refresh_from_db()
+    assert standard_user.first_name == "Janet"
+    assert standard_user.last_name == "Williams"
+    assert standard_user.phone_number == "+91 99999 11111"
+
+    # Verify audit event
+    audit = AuditLog.objects.filter(
+        resource_type="accounts.User",
+        resource_id=str(standard_user.id),
+        action="USER_PROFILE_UPDATED",
+    ).first()
+    assert audit is not None
+    assert audit.user == admin_user
+    assert "first_name" in audit.changes
+
+
+@pytest.mark.django_db
+def test_27_admin_update_protected_fields_rejected(api_client, admin_user, standard_user, test_password):
+    """Verify protected fields (email, is_staff, is_superuser, password) cannot be altered via user profile update."""
+    api_client.force_authenticate(user=admin_user)
+
+    original_email = standard_user.email
+    original_password_hash = standard_user.password
+
+    resp = api_client.patch(
+        f"/api/v1/auth/users/{standard_user.id}/",
+        {
+            "email": "hacked@gqt.local",
+            "is_staff": True,
+            "is_superuser": True,
+            "password": "NewSecretPassword123!",
+        },
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_200_OK
+
+    standard_user.refresh_from_db()
+    assert standard_user.email == original_email
+    assert standard_user.is_staff is False
+    assert standard_user.is_superuser is False
+    assert standard_user.password == original_password_hash
+
+
+@pytest.mark.django_db
+def test_28_admin_provision_user_with_roles_and_audit(api_client, admin_user, seed_roles, test_password):
+    """Verify administrator can provision a new account with hashed password, assigned roles, and audit trail."""
+    api_client.force_authenticate(user=admin_user)
+
+    payload = {
+        "email": "New.Trainer@gqt.local",
+        "password": test_password,
+        "first_name": "Suresh",
+        "last_name": "Rao",
+        "phone_number": "+91 91234 56789",
+        "roles": [RoleCatalog.TRAINER, RoleCatalog.EVALUATOR],
+    }
+    resp = api_client.post(
+        "/api/v1/auth/users/",
+        payload,
+        format="json",
+    )
+    assert resp.status_code == status.HTTP_201_CREATED
+    assert resp.data["email"] == "new.trainer@gqt.local"
+    assert "password" not in resp.data
+    assert RoleCatalog.TRAINER in resp.data["roles"]
+    assert RoleCatalog.EVALUATOR in resp.data["roles"]
+
+    # Verify user exists in DB with hashed password
+    new_user = User.objects.get(email="new.trainer@gqt.local")
+    assert new_user.check_password(test_password)
+    assert not new_user.password.startswith("P@ss")
+
+    # Verify duplicate creation is rejected
+    dup_resp = api_client.post(
+        "/api/v1/auth/users/",
+        payload,
+        format="json",
+    )
+    assert dup_resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    # Verify audit event
+    audit = AuditLog.objects.filter(
+        resource_type="accounts.User",
+        resource_id=str(new_user.id),
+        action="USER_CREATED",
+    ).first()
+    assert audit is not None
+    assert audit.user == admin_user
+
+
+@pytest.mark.django_db
+def test_29_self_demotion_and_last_admin_protection(api_client, admin_user, seed_roles, test_password):
+    """Verify self-demotion from ADMIN role is prevented, and deactivating the last admin is rejected."""
+    api_client.force_authenticate(user=admin_user)
+
+    # 1. Admin trying to revoke ADMIN role from themselves
+    self_demote_resp = api_client.post(
+        f"/api/v1/auth/users/{admin_user.id}/roles/",
+        {"role_codes": [RoleCatalog.STUDENT]},
+        format="json",
+    )
+    assert self_demote_resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert "cannot revoke the ADMIN role from their own account" in str(self_demote_resp.data)
+
+    # 2. Admin trying to deactivate their own account
+    self_deactivate_resp = api_client.patch(
+        f"/api/v1/auth/users/{admin_user.id}/status/",
+        {"is_active": False},
+        format="json",
+    )
+    assert self_deactivate_resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert "Administrators cannot deactivate their own account" in str(self_deactivate_resp.data)
+
+    # 3. Create a second admin
+    second_admin = User.objects.create_user(
+        email="admin2@gqt.local",
+        password=test_password,
+        is_active=True,
+    )
+    assign_roles_to_user(second_admin, [RoleCatalog.ADMIN])
+
+    # Deactivating second admin works while admin_user is still active
+    deactivate_sec_resp = api_client.patch(
+        f"/api/v1/auth/users/{second_admin.id}/status/",
+        {"is_active": False},
+        format="json",
+    )
+    assert deactivate_sec_resp.status_code == status.HTTP_200_OK
+
+    # Now make admin_user inactive directly in DB to test last admin check on second_admin
+    admin_user.is_active = False
+    admin_user.save()
+    second_admin.is_active = True
+    second_admin.save()
+
+    # Re-authenticate as second_admin
+    api_client.force_authenticate(user=second_admin)
+
+    # Revoking ADMIN from second_admin when admin_user is inactive must fail (last admin)
+    last_admin_role_resp = api_client.post(
+        f"/api/v1/auth/users/{second_admin.id}/roles/",
+        {"role_codes": [RoleCatalog.STUDENT]},
+        format="json",
+    )
+    assert last_admin_role_resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_30_audit_logs_endpoint_returns_history_with_redacted_secrets(api_client, admin_user, standard_user):
+    """Verify administrator can retrieve audit logs for a user and secrets are redacted."""
+    # Emit an audit log with sensitive payload
+    AuditLog.objects.create(
+        user=admin_user,
+        action="USER_CREDENTIAL_CHANGE",
+        resource_type="accounts.User",
+        resource_id=str(standard_user.id),
+        changes={"password": "raw_secret_value", "first_name": "Jane"},
+    )
+
+    api_client.force_authenticate(user=admin_user)
+    resp = api_client.get(f"/api/v1/auth/users/{standard_user.id}/audit-logs/")
+    assert resp.status_code == status.HTTP_200_OK
+    assert "data" in resp.data
+
+    items = resp.data["data"]
+    assert len(items) >= 1
+    sample = next(item for item in items if item["action"] == "USER_CREDENTIAL_CHANGE")
+    assert sample["actor_email"] == admin_user.email
+    assert sample["changes"]["password"] == "[REDACTED]"
+    assert sample["changes"]["first_name"] == "Jane"
+
+
+@pytest.mark.django_db
+def test_31_non_admin_cannot_access_user_management_endpoints(api_client, standard_user, placement_head_user, test_password):
+    """Verify student and non-admin staff roles cannot access user management endpoints."""
+    # Student forbidden
+    api_client.force_authenticate(user=standard_user)
+    assert api_client.get("/api/v1/auth/users/").status_code == status.HTTP_403_FORBIDDEN
+    assert api_client.post("/api/v1/auth/users/", {"email": "x@gqt.local", "password": test_password}).status_code == status.HTTP_403_FORBIDDEN
+    assert api_client.patch(f"/api/v1/auth/users/{standard_user.id}/", {"first_name": "X"}).status_code == status.HTTP_403_FORBIDDEN
+    assert api_client.get(f"/api/v1/auth/users/{standard_user.id}/audit-logs/").status_code == status.HTTP_403_FORBIDDEN
+
+    # Placement Head forbidden
+    api_client.force_authenticate(user=placement_head_user)
+    assert api_client.get("/api/v1/auth/users/").status_code == status.HTTP_403_FORBIDDEN
+    assert api_client.post(f"/api/v1/auth/users/{standard_user.id}/roles/", {"role_codes": [RoleCatalog.ADMIN]}).status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_32_recursive_audit_log_redaction(api_client, admin_user, standard_user):
+    """Verify recursive redaction handles arbitrary nested dictionaries, lists, and sensitive tokens."""
+    nested_changes = {
+        "user_profile": {
+            "name": "Jane",
+            "security": {
+                "auth_token": "super_secret_token",
+                "refresh_token": "refresh_12345",
+                "password_hash": "pbkdf2_sha256$600000$...",
+            },
+        },
+        "integrations": [
+            {"service": "whatsapp", "api_key": "wa_key_secret_val"},
+            {"service": "email", "secret": "smtp_pass_val"},
+        ],
+        "sensitive_tokens": ["token1", "token2"],
+        "safe_list": ["item1", "item2"],
+    }
+
+    AuditLog.objects.create(
+        user=admin_user,
+        action="DEEP_SECURITY_AUDIT",
+        resource_type="accounts.User",
+        resource_id=str(standard_user.id),
+        changes=nested_changes,
+    )
+
+    api_client.force_authenticate(user=admin_user)
+    resp = api_client.get(f"/api/v1/auth/users/{standard_user.id}/audit-logs/")
+    assert resp.status_code == status.HTTP_200_OK
+    audit_entry = next(item for item in resp.data["data"] if item["action"] == "DEEP_SECURITY_AUDIT")
+    changes = audit_entry["changes"]
+
+    # Verify nested dictionary redaction
+    assert changes["user_profile"]["name"] == "Jane"
+    assert changes["user_profile"]["security"]["auth_token"] == "[REDACTED]"
+    assert changes["user_profile"]["security"]["refresh_token"] == "[REDACTED]"
+    assert changes["user_profile"]["security"]["password_hash"] == "[REDACTED]"
+
+    # Verify nested list of dictionaries redaction
+    assert changes["integrations"][0]["service"] == "whatsapp"
+    assert changes["integrations"][0]["api_key"] == "[REDACTED]"
+    assert changes["integrations"][1]["service"] == "email"
+    assert changes["integrations"][1]["secret"] == "[REDACTED]"
+
+    # Verify sensitive array key itself is redacted
+    assert changes["sensitive_tokens"] == "[REDACTED]"
+
+    # Verify non-sensitive elements preserved
+    assert changes["safe_list"] == ["item1", "item2"]
+
+
+@pytest.mark.django_db
+def test_33_inactive_role_definition_cannot_satisfy_last_admin_requirement(api_client, admin_user, seed_roles, test_password):
+    """Verify that an inactive ADMIN role definition or inactive assignment does not count as active administrator privilege."""
+    admin_role = Role.objects.get(code=RoleCatalog.ADMIN)
+
+    # Create user B with an admin assignment
+    user_b = User.objects.create_user(
+        email="admin_b@gqt.local",
+        password=test_password,
+        is_active=True,
+    )
+    assign_roles_to_user(user_b, [RoleCatalog.ADMIN])
+
+    # Now simulate the ADMIN role being deactivated globally
+    admin_role.is_active = False
+    admin_role.save()
+
+    # User B should not be counted as a valid active administrator
+    api_client.force_authenticate(user=admin_user)
+    # Attempting to deactivate admin_user or revoke admin from admin_user should fail because user_b's role is inactive
+    with pytest.raises(exceptions.ValidationError) as exc:
+        update_user_status(target_user=admin_user, is_active=False, updated_by=user_b)
+    assert "Cannot deactivate the final active system administrator" in str(exc.value)
+
+

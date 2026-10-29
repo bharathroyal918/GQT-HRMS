@@ -80,7 +80,7 @@ def list_publications_for_job(job_id: str) -> QuerySet[JobPublication]:
     """List all broadcast publications for a given job requirement."""
     return (
         JobPublication.objects.filter(job_requirement_id=job_id)
-        .select_related("job_requirement", "creative_version", "published_by")
+        .select_related("job_requirement", "job_requirement__company", "creative_version", "published_by")
         .order_by("-created_at")
     )
 
@@ -89,7 +89,7 @@ def get_publication_by_id(pub_id: str) -> Optional[JobPublication]:
     """Retrieve a specific publication by its ID."""
     return (
         JobPublication.objects.filter(id=pub_id)
-        .select_related("job_requirement", "creative_version", "published_by")
+        .select_related("job_requirement", "job_requirement__company", "creative_version", "published_by")
         .first()
     )
 

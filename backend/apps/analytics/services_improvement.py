@@ -45,8 +45,8 @@ def create_training_plan(data: Dict[str, Any], user: User) -> TrainingPlan:
     """Create a new remedial training plan motivated by skill gaps and feedback."""
     title = data.get("title", "").strip()
     target_skill = data.get("target_skill", "").strip()
-    motivation = data.get("motivation_evidence", "").strip()
-    target_cohort = data.get("target_cohort", "").strip()
+    motivation = (data.get("motivation_evidence") or data.get("evidence_rationale") or "").strip()
+    target_cohort = (data.get("target_cohort") or f"{data.get('target_cohort_year', '')} {data.get('target_department', '')}".strip() or "General Cohort").strip()
     objectives = data.get("proposed_objectives", "").strip()
     expected_outcome = data.get("expected_outcome", "").strip()
     planned_sessions = int(data.get("planned_sessions_count", 1))
@@ -54,12 +54,21 @@ def create_training_plan(data: Dict[str, Any], user: User) -> TrainingPlan:
     if not title or not target_skill or not motivation or not target_cohort:
         raise ValidationError("Title, target skill, motivation evidence, and target cohort are required.")
 
-    start_date = data.get("planned_start_date")
-    end_date = data.get("planned_end_date")
+    start_date = data.get("planned_start_date") or data.get("start_date")
+    end_date = data.get("planned_end_date") or data.get("end_date")
     if isinstance(start_date, str):
         start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+    elif isinstance(start_date, datetime):
+        start_date = start_date.date()
+    elif not start_date:
+        start_date = timezone.now().date()
+
     if isinstance(end_date, str):
         end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+    elif isinstance(end_date, datetime):
+        end_date = end_date.date()
+    elif not end_date:
+        end_date = start_date + timedelta(days=14)
 
     if start_date and end_date and start_date > end_date:
         raise ValidationError("Planned start date cannot be after planned end date.")

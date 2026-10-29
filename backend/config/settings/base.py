@@ -131,13 +131,27 @@ use_sqlite = env.bool("USE_SQLITE_FOR_LOCAL_DEV", default=True)
 
 if database_url and not (use_sqlite and "sqlite" in database_url.lower()):
     parsed_db = env.db_url("DATABASE_URL")
-    # Ensure SSL is enforced for remote Supabase connections
+    # Ensure SSL is enforced for remote Supabase connections and optimize for psycopg v3
     if "supabase.com" in parsed_db.get("HOST", "") or parsed_db.get("ENGINE") == "django.db.backends.postgresql":
         parsed_db.setdefault("OPTIONS", {})
         parsed_db["OPTIONS"]["sslmode"] = env.str("DB_SSLMODE", default="require")
-        parsed_db["OPTIONS"]["connect_timeout"] = 10
+        parsed_db["OPTIONS"]["connect_timeout"] = env.int("DB_CONNECT_TIMEOUT", default=10)
+        # Disable server-side prepared statements when connecting via PgBouncer / transaction poolers
+        is_pooler = "pooler" in parsed_db.get("HOST", "") or str(parsed_db.get("PORT", "")) in ("6543", "6432")
+        if is_pooler or env.bool("DB_DISABLE_PREPARED_STATEMENTS", default=False):
+            parsed_db["OPTIONS"]["prepare_threshold"] = None
+        # Use 0 connection max age behind poolers to prevent dead connections, 60s for direct
+        parsed_db["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=0 if is_pooler else 60)
     DATABASES = {"default": parsed_db}
 elif env.str("DB_NAME", default="") and not use_sqlite:
+    is_pooler = "pooler" in env.str("DB_HOST", "") or str(env.str("DB_PORT", default="5432")) in ("6543", "6432")
+    db_options = {
+        "sslmode": env("DB_SSLMODE", default="require"),
+        "connect_timeout": env.int("DB_CONNECT_TIMEOUT", default=10),
+    }
+    if is_pooler or env.bool("DB_DISABLE_PREPARED_STATEMENTS", default=False):
+        db_options["prepare_threshold"] = None
+
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
@@ -146,11 +160,8 @@ elif env.str("DB_NAME", default="") and not use_sqlite:
             "PASSWORD": env("DB_PASSWORD", default=""),
             "HOST": env("DB_HOST", default="localhost"),
             "PORT": env("DB_PORT", default="5432"),
-            "CONN_MAX_AGE": 60,
-            "OPTIONS": {
-                "sslmode": env("DB_SSLMODE", default="require"),
-                "connect_timeout": 10,
-            },
+            "CONN_MAX_AGE": env.int("DB_CONN_MAX_AGE", default=0 if is_pooler else 60),
+            "OPTIONS": db_options,
         }
     }
 else:

@@ -1,4 +1,5 @@
 """Transactional Service Layer for Job Requirements & Verification (Phase 3)."""
+import logging
 from typing import Any, Dict, List, Optional
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
@@ -15,6 +16,8 @@ from apps.jobs.models import (
     JobRequirement,
     JobRequirementStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _log_audit_event(
@@ -405,6 +408,24 @@ def approve_job_requirement(
         correlation_id=correlation_id,
         ip_address=ip_address,
     )
+
+    # Phase 15 WS3: In-app notification to job author if distinct
+    try:
+        if job.created_by and getattr(job.created_by, "is_active", False) and job.created_by != approver:
+            from apps.core.models import NotificationCategory
+            from apps.core.services_notifications import create_notification
+            create_notification(
+                recipient=job.created_by,
+                category=NotificationCategory.JOB_DRIVE,
+                title=f"Job Requirement Approved: {job.title}",
+                message=f"Job requirement '{job.title}' for {job.company.name} was approved by {approver.full_name or approver.email}.",
+                link="/jobs",
+                metadata={"job_id": str(job.id), "company_id": str(job.company_id)},
+                idempotency_key=f"NOTIF-JOB-APPROVE-{job.id}",
+            )
+    except Exception as exc:
+        logger.warning("Failed to dispatch in-app notification for job %s: %s", job.id, exc)
+
     return job
 
 

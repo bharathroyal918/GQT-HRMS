@@ -419,16 +419,27 @@ def get_feedback_intelligence(
 
     # Extract non-empty recruiter observations (sanitized)
     hr_remarks_list = []
-    for f in hr_qs.order_by("-created_at")[:10]:
+    recruiter_remarks_sample = []
+    for f in hr_qs.select_related("company", "job_requirement").order_by("-created_at")[:10]:
         remarks = (f.technical_skills_remarks or f.communication_skills_remarks or f.hiring_satisfaction_remarks or "").strip()
         if remarks:
-            hr_remarks_list.append({
+            item_entry = {
                 "company_name": f.company.name,
                 "candidate_quality": f.get_candidate_quality_display(),
                 "technical_rating": f.technical_skills_rating,
                 "communication_rating": f.communication_skills_rating,
                 "satisfaction_rating": f.hiring_satisfaction_rating,
                 "remarks": remarks[:300],
+                "date": f.created_at.date().isoformat(),
+            }
+            hr_remarks_list.append(item_entry)
+            recruiter_remarks_sample.append({
+                "id": str(f.id),
+                "company_name": f.company.name,
+                "role_title": f.job_requirement.title if f.job_requirement else "General Recruitment",
+                "category": f.get_candidate_quality_display(),
+                "remark": remarks[:300],
+                "rating": f.technical_skills_rating,
                 "date": f.created_at.date().isoformat(),
             })
 
@@ -451,22 +462,41 @@ def get_feedback_intelligence(
         DifficultyLevel.VERY_HARD: student_qs.filter(difficulty=DifficultyLevel.VERY_HARD).count(),
     }
 
+    student_difficulty_breakdown = [
+        {"difficulty": "EASY", "count": difficulty_counts[DifficultyLevel.EASY], "percentage": _safe_pct(difficulty_counts[DifficultyLevel.EASY], student_total)},
+        {"difficulty": "MEDIUM", "count": difficulty_counts[DifficultyLevel.MEDIUM], "percentage": _safe_pct(difficulty_counts[DifficultyLevel.MEDIUM], student_total)},
+        {"difficulty": "HARD", "count": difficulty_counts[DifficultyLevel.HARD], "percentage": _safe_pct(difficulty_counts[DifficultyLevel.HARD], student_total)},
+        {"difficulty": "VERY_HARD", "count": difficulty_counts[DifficultyLevel.VERY_HARD], "percentage": _safe_pct(difficulty_counts[DifficultyLevel.VERY_HARD], student_total)},
+    ]
+
     # Strict Anonymity & Small Group Masking Policy
     is_small_group = student_total < MINIMUM_GROUP_ANONYMITY_THRESHOLD
     student_feedback_extracts = []
-    for sf in student_qs.order_by("-created_at")[:10]:
+    student_suggestions_sample = []
+    for sf in student_qs.select_related("company", "student").order_by("-created_at")[:10]:
         # Enforce student anonymity if flagged OR if small group threshold applies
         should_mask = sf.is_anonymous or is_small_group
         author_display = "Candidate (Anonymized)" if should_mask else sf.student.roll_number
+        experience = sf.interview_experience[:250] if sf.interview_experience else ""
+        suggestion_text = sf.suggestions[:200] if sf.suggestions else (experience[:200] or "No specific suggestion provided.")
         student_feedback_extracts.append({
             "company_name": sf.company.name,
             "difficulty": sf.get_difficulty_display(),
-            "interview_experience": sf.interview_experience[:250],
+            "interview_experience": experience,
             "technical_questions": sf.technical_questions[:200] if sf.technical_questions else "",
             "suggestions": sf.suggestions[:200] if sf.suggestions else "",
             "submitted_by": author_display,
             "is_anonymous": should_mask,
             "date": sf.created_at.date().isoformat(),
+        })
+        student_suggestions_sample.append({
+            "id": str(sf.id),
+            "company_name": sf.company.name,
+            "difficulty": sf.get_difficulty_display(),
+            "suggestion": suggestion_text,
+            "interview_experience": experience,
+            "date": sf.created_at.date().isoformat(),
+            "is_anonymous": should_mask,
         })
 
     # 3. Trainer Readiness Feedback (Category C)
@@ -487,18 +517,62 @@ def get_feedback_intelligence(
         StudentReadiness.NOT_READY: trainer_qs.filter(student_readiness=StudentReadiness.NOT_READY).count(),
     }
 
+    trainer_readiness_breakdown = [
+        {"readiness": "HIGHLY_READY", "count": readiness_counts[StudentReadiness.HIGHLY_READY], "percentage": _safe_pct(readiness_counts[StudentReadiness.HIGHLY_READY], trainer_total)},
+        {"readiness": "READY", "count": readiness_counts[StudentReadiness.READY], "percentage": _safe_pct(readiness_counts[StudentReadiness.READY], trainer_total)},
+        {"readiness": "NEEDS_PRACTICE", "count": readiness_counts[StudentReadiness.NEEDS_PRACTICE], "percentage": _safe_pct(readiness_counts[StudentReadiness.NEEDS_PRACTICE], trainer_total)},
+        {"readiness": "NOT_READY", "count": readiness_counts[StudentReadiness.NOT_READY], "percentage": _safe_pct(readiness_counts[StudentReadiness.NOT_READY], trainer_total)},
+    ]
+
     # Recurring areas for improvement from trainers
     trainer_improvements = []
-    for tf in trainer_qs.order_by("-created_at")[:10]:
-        if tf.areas_for_improvement.strip():
+    trainer_improvement_areas_sample = []
+    for tf in trainer_qs.select_related("student", "student__user").order_by("-created_at")[:10]:
+        if tf.areas_for_improvement and tf.areas_for_improvement.strip():
+            student_display = "Candidate (Anonymized)" if is_small_group else (
+                getattr(tf.student.user, "full_name", None) or getattr(tf.student, "roll_number", "Candidate")
+                if hasattr(tf, "student") and tf.student else "Candidate"
+            )
             trainer_improvements.append({
                 "student_readiness": tf.get_student_readiness_display(),
                 "training_effectiveness": tf.training_effectiveness_rating,
                 "areas_for_improvement": tf.areas_for_improvement[:250],
                 "date": tf.created_at.date().isoformat(),
             })
+            trainer_improvement_areas_sample.append({
+                "id": str(tf.id),
+                "student_name": student_display,
+                "readiness": tf.get_student_readiness_display(),
+                "areas_for_improvement": tf.areas_for_improvement[:250],
+                "effectiveness_rating": tf.training_effectiveness_rating,
+                "date": tf.created_at.date().isoformat(),
+            })
 
     return {
+        "anonymity_rule_enforced": True,
+        "minimum_group_threshold": MINIMUM_GROUP_ANONYMITY_THRESHOLD,
+        "is_small_group_masked": is_small_group,
+        "anonymity_notice": "Minimum group threshold applied to protect student privacy." if is_small_group else None,
+        "kpi_summary": {
+            "total_recruiter_evaluations": hr_total,
+            "total_student_experiences": student_total,
+            "total_trainer_assessments": trainer_total,
+            "avg_recruiter_tech_rating": avg_technical_rating,
+            "avg_recruiter_comm_rating": avg_communication_rating,
+            "avg_recruiter_satisfaction": avg_hiring_satisfaction,
+            "avg_trainer_effectiveness": avg_training_effectiveness,
+        },
+        "recruiter_ratings": {
+            "avg_technical": avg_technical_rating,
+            "avg_communication": avg_communication_rating,
+            "avg_satisfaction": avg_hiring_satisfaction,
+            "distribution_quality": quality_counts,
+        },
+        "student_difficulty_breakdown": student_difficulty_breakdown,
+        "trainer_readiness_breakdown": trainer_readiness_breakdown,
+        "recruiter_remarks_sample": recruiter_remarks_sample,
+        "student_suggestions_sample": student_suggestions_sample,
+        "trainer_improvement_areas_sample": trainer_improvement_areas_sample,
         "hr_feedback": {
             "total_responses": hr_total,
             "avg_technical_rating": avg_technical_rating,
@@ -579,6 +653,7 @@ def get_skill_gap_analysis(
 
     skill_demand_counts: Dict[str, int] = {}
     skill_job_references: Dict[str, List[str]] = {}
+    skill_company_references: Dict[str, Set[str]] = {}
 
     for job in jobs_qs:
         raw_text = f"{job.skills_required} {job.title} {job.job_description}"
@@ -599,6 +674,9 @@ def get_skill_gap_analysis(
                 skill_job_references[skill] = []
             if job.title not in skill_job_references[skill]:
                 skill_job_references[skill].append(job.title)
+            if skill not in skill_company_references:
+                skill_company_references[skill] = set()
+            skill_company_references[skill].add(str(job.company_id))
 
     # 2. Institutional Assessments Evidence (Aptitude & Technical)
     attempts_qs = StudentAssessmentAttempt.objects.filter(status="COMPLETED")
@@ -711,17 +789,33 @@ def get_skill_gap_analysis(
             severity = "MEDIUM"
             recommendation = f"Gather additional test attempts and mock interview evaluations for {skill}."
 
+        if gap_status == "STRENGTH":
+            coverage_category = "EVALUATED_WELL"
+        else:
+            coverage_category = gap_status
+
+        companies_count = len(skill_company_references.get(skill, set()))
+
         skill_matrix.append({
+            "skill": skill,
             "skill_name": skill,
+            "jobs_requiring": demand,
             "market_demand_jobs_count": demand,
+            "companies_requiring": companies_count,
             "jobs_referencing": skill_job_references.get(skill, [])[:3],
+            "assessment_tests_count": skill_assessment_stats.get(skill, {}).get("tests_count", 0),
+            "total_attempts": total_att,
             "assessment_attempts_count": total_att,
+            "passed_attempts": passed_att,
+            "pass_percentage": round(pass_rate, 2) if pass_rate is not None else 0.0,
             "assessment_pass_rate": pass_rate,
             "average_assessment_score": avg_score,
             "data_coverage_level": coverage,
             "gap_status": gap_status,
+            "coverage_category": coverage_category,
             "status_label": status_label,
             "severity": severity,
+            "recommendation": recommendation,
             "evidence_based_recommendation": recommendation,
         })
 
@@ -747,8 +841,13 @@ def get_skill_gap_analysis(
                 "avg_communication_clarity": mock_avg_communication,
             },
         },
-        "skill_matrix": skill_matrix,
+        "total_market_demand_skills": sum(1 for s in skill_matrix if s["jobs_requiring"] > 0),
+        "total_assessed_skills": sum(1 for s in skill_matrix if s["total_attempts"] > 0),
+        "unassessed_high_demand_skills": unassessed_count,
+        "critical_gap_skills": critical_count,
+        "ai_disclaimer": "All skill gaps derived deterministically from authoritative job requirements, student assessment attempts, and mock interview scorecards. No predictive AI or probabilistic candidate ranking applied.",
         "methodology_disclaimer": "All skill gaps derived deterministically from authoritative job requirements, student assessment attempts, and mock interview scorecards. No predictive AI or probabilistic candidate ranking applied.",
+        "skill_matrix": skill_matrix,
         "generated_at": timezone.now().isoformat(),
     }
 
@@ -777,27 +876,34 @@ def get_training_plans_dataset(
 
     plans_list = []
     for p in plans_qs:
+        plan_code = f"TRP-{str(p.id)[:8].upper()}"
         plans_list.append({
-            "id": p.id,
+            "id": str(p.id),
+            "plan_code": plan_code,
             "title": p.title,
             "target_skill": p.target_skill,
             "motivation_evidence": p.motivation_evidence,
+            "evidence_rationale": p.motivation_evidence,
             "target_cohort": p.target_cohort,
             "proposed_objectives": p.proposed_objectives,
             "planned_sessions_count": p.planned_sessions_count,
-            "responsible_trainer_id": p.responsible_trainer.id,
+            "responsible_trainer_id": str(p.responsible_trainer.id),
             "responsible_trainer_name": p.responsible_trainer.full_name or p.responsible_trainer.username,
             "planned_start_date": p.planned_start_date.isoformat(),
             "planned_end_date": p.planned_end_date.isoformat(),
+            "start_date": p.planned_start_date.isoformat(),
+            "end_date": p.planned_end_date.isoformat(),
             "status": p.status,
             "status_display": p.get_status_display(),
             "expected_outcome": p.expected_outcome,
             "actual_completion_results": p.actual_completion_results,
             "cancellation_reason": p.cancellation_reason,
+            "approval_notes": p.cancellation_reason,
             "approved_by_name": p.approved_by.full_name if p.approved_by else None,
             "approved_at": p.approved_at.isoformat() if p.approved_at else None,
             "created_by_name": p.created_by.full_name or p.created_by.username,
             "created_at": p.created_at.isoformat(),
+            "updated_at": p.updated_at.isoformat(),
             "linked_actions_count": p.linked_cycle_actions.count(),
         })
 

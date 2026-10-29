@@ -115,6 +115,87 @@ def _resolve_escalation_target_officer(fallback_user: Optional[Any] = None) -> O
 # Capability B & C: Process Due Reminder Items (Emails & WhatsApp)
 # ==============================================================================
 
+def recover_stale_processing_reminders(
+    reference_time: Optional[datetime] = None,
+    stale_threshold_minutes: int = 10,
+    correlation_id: str = "",
+    batch_size: int = 100,
+) -> int:
+    """Recover reminder items trapped in PROCESSING state after worker interruptions.
+
+    If an item has been in PROCESSING for longer than stale_threshold_minutes:
+    - If attempt_count < max_attempts, return it to RETRY_SCHEDULED so a worker can pick it up.
+    - If attempt_count >= max_attempts, mark it as FAILED and record an audit log.
+
+    Bounded recovery batches:
+    - Bounded to at most `batch_size` items ordered deterministically by updated_at ascending.
+    """
+    if batch_size <= 0:
+        raise ValueError("batch_size must be a positive integer greater than zero.")
+
+    now = reference_time or timezone.now()
+    stale_cutoff = now - timedelta(minutes=stale_threshold_minutes)
+    is_postgres = connection.vendor == "postgresql"
+
+    with transaction.atomic():
+        stale_items = (
+            FollowUpReminderItem.objects.filter(
+                status=ReminderDeliveryStatus.PROCESSING,
+                updated_at__lte=stale_cutoff,
+            )
+            .select_related("follow_up")
+            .order_by("updated_at")
+        )
+        if is_postgres:
+            try:
+                stale_items = stale_items.select_for_update(skip_locked=True)
+            except Exception:
+                stale_items = stale_items.select_for_update()
+
+        items_list = list(stale_items[:batch_size])
+        recovered_count = 0
+        for item in items_list:
+            recovered_count += 1
+            if item.attempt_count < item.max_attempts:
+                item.status = ReminderDeliveryStatus.RETRY_SCHEDULED
+                item.backoff_until = now
+                item.error_message = (
+                    f"Recovered from stalled PROCESSING state (exceeded {stale_threshold_minutes}m timeout)."
+                )
+                item.save(update_fields=["status", "backoff_until", "error_message", "updated_at"])
+                _log_automation_audit(
+                    user=None,
+                    action="FOLLOW_UP_REMINDER_RECOVERED",
+                    resource_type="FollowUpReminderItem",
+                    resource_id=item.id,
+                    changes={
+                        "previous_status": "PROCESSING",
+                        "new_status": "RETRY_SCHEDULED",
+                        "reason": "stale_timeout",
+                    },
+                    correlation_id=correlation_id,
+                )
+            else:
+                item.status = ReminderDeliveryStatus.FAILED
+                item.error_message = (
+                    f"Permanent failure: trapped in PROCESSING after {item.attempt_count} attempts."
+                )
+                item.save(update_fields=["status", "error_message", "updated_at"])
+                _log_automation_audit(
+                    user=None,
+                    action="FOLLOW_UP_REMINDER_STALE_FAILED",
+                    resource_type="FollowUpReminderItem",
+                    resource_id=item.id,
+                    changes={
+                        "previous_status": "PROCESSING",
+                        "new_status": "FAILED",
+                        "reason": "max_attempts_exceeded",
+                    },
+                    correlation_id=correlation_id,
+                )
+        return recovered_count
+
+
 def process_due_reminder_items(
     reference_time: Optional[datetime] = None,
     limit: int = 50,
@@ -128,6 +209,13 @@ def process_due_reminder_items(
     limit = batch_size if batch_size is not None else limit
     now = reference_time or timezone.now()
     is_postgres = connection.vendor == "postgresql"
+
+    # Recover any orphaned items stuck in PROCESSING due to earlier worker crash (bounded batch)
+    recover_stale_processing_reminders(
+        reference_time=now,
+        correlation_id=correlation_id,
+        batch_size=limit or 100,
+    )
 
     from django.db.models import Q
 

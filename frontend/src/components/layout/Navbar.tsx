@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { GQTLogo } from '../brand/GQTLogo';
+import { NotificationBell } from '../notifications/NotificationBell';
 import {
   LayoutDashboard,
   Activity,
@@ -83,7 +84,12 @@ export const Navbar: React.FC = () => {
             : []),
         ]
       : []),
-    ...(hasRole('STUDENT') ? [{ name: 'My Profile & Resume', href: '/students/profile', icon: GraduationCap }] : []),
+    ...(user?.roles?.includes('STUDENT')
+      ? [
+          { name: 'My Profile & Resume', href: '/students/profile', icon: GraduationCap },
+          { name: 'Placement Drives', href: '/students/drives', icon: Briefcase },
+        ]
+      : []),
     ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'AUDITOR'])
       ? [{ name: 'Student Directory', href: '/students', icon: GraduationCap }]
       : []),
@@ -111,7 +117,12 @@ export const Navbar: React.FC = () => {
     ...(hasAnyRole(['ADMIN', 'PLACEMENT_HEAD', 'PLACEMENT_OFFICER', 'HR_RELATIONSHIP_MGR', 'TRAINER', 'EVALUATOR', 'AUDITOR'])
       ? [{ name: 'Continuous Improvement', href: '/continuous-improvement', icon: RotateCcw }]
       : []),
-    ...(hasRole('ADMIN') ? [{ name: 'Diagnostics', href: '/diagnostics', icon: Activity }] : []),
+    ...(hasRole('ADMIN')
+      ? [
+          { name: 'User Management', href: '/admin/users', icon: Users },
+          { name: 'Diagnostics', href: '/diagnostics', icon: Activity },
+        ]
+      : []),
   ];
 
   return (
@@ -159,6 +170,7 @@ export const Navbar: React.FC = () => {
 
             {isAuthenticated && user ? (
               <div className="flex items-center gap-2.5 pl-2 border-l border-gqt-neutral-200">
+                <NotificationBell />
                 <div className="hidden sm:flex flex-col items-end leading-none">
                   <span className="text-xs font-bold text-gqt-navy">{user.full_name}</span>
                   <span className="text-[10px] font-semibold text-gqt-neutral-500 uppercase mt-0.5">

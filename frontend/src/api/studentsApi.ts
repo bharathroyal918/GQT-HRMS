@@ -8,14 +8,25 @@ import {
   StudentResume,
   StudentApplication,
   EligibilityEvaluation,
+  EligibilityPreview,
   CandidateCohort,
 } from '../types/students';
 
 export const studentsApi = {
   // Step 10: Publish Job Notification
-  async listPublications(jobId?: string): Promise<JobPublication[]> {
-    const params = jobId ? { job_id: jobId } : {};
-    const res = await apiClient.get<JobPublication[]>('/students/publications/', { params });
+  async listPublications(params?: string | { job_id?: string; eligible_only?: boolean }): Promise<JobPublication[]> {
+    const queryParams = typeof params === 'string' ? { job_id: params } : (params || {});
+    const res = await apiClient.get<JobPublication[]>('/students/publications/', { params: queryParams });
+    return res.data;
+  },
+
+  async listEligiblePublications(): Promise<JobPublication[]> {
+    const res = await apiClient.get<JobPublication[]>('/students/publications/eligible/');
+    return res.data;
+  },
+
+  async previewEligibility(jobRequirementId: string): Promise<EligibilityPreview> {
+    const res = await apiClient.get<EligibilityPreview>(`/students/jobs/${jobRequirementId}/eligibility-preview/`);
     return res.data;
   },
 

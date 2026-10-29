@@ -5,6 +5,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_decode
 from rest_framework import serializers
 from apps.accounts.models import Role, RoleCatalog, User
+from apps.core.models import AuditLog
 
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -173,6 +174,12 @@ class UserAdminCreateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at"]
 
+    def validate_email(self, value: str) -> str:
+        normalized = value.lower().strip()
+        if User.objects.filter(email__iexact=normalized).exists():
+            raise serializers.ValidationError("A user account with this email address already exists.")
+        return normalized
+
     def validate_password(self, value: str) -> str:
         password_validation.validate_password(value)
         return value
@@ -206,3 +213,83 @@ class UserRoleAssignSerializer(serializers.Serializer):
         if invalid:
             raise serializers.ValidationError(f"Invalid role codes: {', '.join(invalid)}")
         return values
+
+
+class UserAdminUpdateSerializer(serializers.ModelSerializer):
+    """Serializer used by Platform Administrators to update permitted user details."""
+
+    class Meta:
+        model = User
+        fields = [
+            "first_name",
+            "last_name",
+            "phone_number",
+        ]
+
+    def validate_phone_number(self, value: str) -> str:
+        return value.strip()
+
+
+def _is_sensitive_key(key: str) -> bool:
+    sensitive_patterns = (
+        "password",
+        "token",
+        "secret",
+        "refresh",
+        "access",
+        "api_key",
+        "credentials",
+        "otp",
+        "hash",
+    )
+    key_lower = str(key).lower()
+    return any(pat in key_lower for pat in sensitive_patterns)
+
+
+def _sanitize_audit_payload(item, key_name: str = ""):
+    if key_name and _is_sensitive_key(key_name):
+        return "[REDACTED]"
+    if isinstance(item, dict):
+        return {
+            k: ("[REDACTED]" if _is_sensitive_key(k) else _sanitize_audit_payload(v, k))
+            for k, v in item.items()
+        }
+    if isinstance(item, (list, tuple, set)):
+        return [_sanitize_audit_payload(elem, key_name) for elem in item]
+    return item
+
+
+class UserAuditLogSerializer(serializers.ModelSerializer):
+    """Read-only serializer for auditing historical administrative actions on user accounts."""
+
+    actor_email = serializers.SerializerMethodField()
+    actor_name = serializers.SerializerMethodField()
+    changes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AuditLog
+        fields = [
+            "id",
+            "action",
+            "resource_type",
+            "resource_id",
+            "actor_email",
+            "actor_name",
+            "ip_address",
+            "user_agent",
+            "correlation_id",
+            "changes",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_actor_email(self, obj: AuditLog) -> str:
+        return obj.user.email if obj.user else "System"
+
+    def get_actor_name(self, obj: AuditLog) -> str:
+        return obj.user.full_name if obj.user else "System"
+
+    def get_changes(self, obj: AuditLog) -> dict:
+        data = obj.changes or {}
+        return _sanitize_audit_payload(data)
+

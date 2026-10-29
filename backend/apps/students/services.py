@@ -536,6 +536,8 @@ def apply_student_for_job(
         application.status = StudentApplicationStatus.APPLIED
         application.resume = active_resume
         application.save(update_fields=["status", "resume", "updated_at"])
+    elif not created:
+        raise ValidationError("You have already submitted an application for this placement opportunity.")
 
     # Run deterministic eligibility engine
     eval_result = evaluate_student_eligibility(job, student_profile)
@@ -572,6 +574,27 @@ def apply_student_for_job(
             "eligibility_status": eval_status,
         },
     )
+
+    # Phase 15 WS3: In-app notification to student
+    try:
+        if student_profile.user and getattr(student_profile.user, "is_active", False):
+            from apps.core.models import NotificationCategory
+            from apps.core.services_notifications import create_notification
+            create_notification(
+                recipient=student_profile.user,
+                category=NotificationCategory.APPLICATION,
+                title=f"Application Received: {job.title}",
+                message=f"Your application for '{job.title}' at {job.company.name} has been received with status: {application.status}.",
+                link="/students/drives",
+                metadata={
+                    "job_id": str(job.id),
+                    "application_id": str(application.id),
+                    "status": application.status,
+                },
+                idempotency_key=f"NOTIF-STUDENT-APP-{application.id}",
+            )
+    except Exception as exc:
+        logger.warning("Failed to dispatch in-app notification for application %s: %s", application.id, exc)
 
     return application
 
@@ -651,6 +674,23 @@ def override_candidate_eligibility(
             "reason": override_reason.strip(),
         },
     )
+
+    # Phase 15 WS3: In-app notification to student on eligibility override
+    try:
+        if app.student.user and getattr(app.student.user, "is_active", False):
+            from apps.core.models import NotificationCategory
+            from apps.core.services_notifications import create_notification
+            create_notification(
+                recipient=app.student.user,
+                category=NotificationCategory.APPLICATION,
+                title=f"Application Status Updated: {app.job_requirement.title}",
+                message=f"Your eligibility for '{app.job_requirement.title}' has been updated to {new_status} by {override_by.full_name or override_by.email}.",
+                link="/students/drives",
+                metadata={"evaluation_id": str(evaluation.id), "new_status": new_status},
+                idempotency_key=f"NOTIF-APP-OVERRIDE-{evaluation.id}-{new_status}",
+            )
+    except Exception as exc:
+        logger.warning("Failed to dispatch in-app notification for evaluation %s: %s", evaluation.id, exc)
 
     return evaluation
 

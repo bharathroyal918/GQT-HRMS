@@ -211,6 +211,8 @@ const mockTrainingPlans = [
     plan_code: 'TRP-2026-001',
     target_skill: 'Data Structures',
     evidence_rationale: 'Pass rate in internal DSA diagnostic test is 45.0%.',
+    motivation_evidence: 'Pass rate in internal DSA diagnostic test is 45.0%.',
+    target_cohort: '2026 Computer Science',
     target_cohort_year: 2026,
     target_department: 'Computer Science',
     target_eligible_count: 45,
@@ -218,7 +220,7 @@ const mockTrainingPlans = [
     proposed_objectives: 'Elevate cohort clearance to 80%+ on array, trees, and dynamic programming.',
     planned_activities: '10 weekend problem-solving labs with timed HackerRank drills.',
     responsible_trainer_name: 'Dr. Alan Turing',
-    status: 'PROPOSED',
+    status: 'PROPOSED' as const,
     approved_by_name: null,
     approved_at: null,
     approval_notes: '',
@@ -228,6 +230,23 @@ const mockTrainingPlans = [
     updated_at: '2026-10-25T10:00:00Z',
   },
 ];
+
+const mockTrainingPlansResponse = {
+  summary: {
+    total_plans: 1,
+    status_counts: {
+      DRAFT: 0,
+      PROPOSED: 1,
+      APPROVED: 0,
+      SCHEDULED: 0,
+      IN_PROGRESS: 0,
+      COMPLETED: 0,
+      CANCELLED: 0,
+    },
+  },
+  training_plans: mockTrainingPlans,
+  generated_at: '2026-10-28T10:00:00Z',
+};
 
 const mockCycleReviews = [
   {
@@ -299,7 +318,7 @@ describe('Phase 13: Continuous Improvement Hub Frontend', () => {
     (continuousImprovementApi.getPlacementRate as any).mockResolvedValue(mockPlacementData);
     (continuousImprovementApi.getFeedbackIntelligence as any).mockResolvedValue(mockFeedbackData);
     (continuousImprovementApi.getSkillGapMatrix as any).mockResolvedValue(mockSkillGapData);
-    (continuousImprovementApi.getTrainingPlans as any).mockResolvedValue(mockTrainingPlans);
+    (continuousImprovementApi.getTrainingPlans as any).mockResolvedValue(mockTrainingPlansResponse);
     (continuousImprovementApi.getCycleReviews as any).mockResolvedValue(mockCycleReviews);
     (continuousImprovementApi.getDiagnostics as any).mockResolvedValue(mockDiagnostics);
   });
@@ -410,6 +429,34 @@ describe('Phase 13: Continuous Improvement Hub Frontend', () => {
 
     await waitFor(() => {
       expect(continuousImprovementApi.exportPlacementRateCsv).toHaveBeenCalled();
+    });
+  });
+
+  it('9. Tab 4 Training Plans renders summary metrics and plan cards from canonical response contract', async () => {
+    renderComponent();
+    const trainingTab = screen.getByText('4. Training Plans');
+    fireEvent.click(trainingTab);
+
+    await waitFor(() => {
+      expect(screen.getByText('Total Plans')).toBeInTheDocument();
+      expect(screen.getByText('Proposed / Pending')).toBeInTheDocument();
+      expect(screen.getByText('Remedial Data Structures Acceleration Program')).toBeInTheDocument();
+      expect(screen.getByText('TRP-2026-001')).toBeInTheDocument();
+      expect(screen.getByText('PROPOSED')).toBeInTheDocument();
+    });
+  });
+
+  it('10. Safely displays warning UI on malformed training plans response without uncaught .map() exception', async () => {
+    (continuousImprovementApi.getTrainingPlans as any).mockResolvedValue({
+      summary: { total_plans: 0, status_counts: {} },
+      training_plans: null,
+    });
+    renderComponent();
+    const trainingTab = screen.getByText('4. Training Plans');
+    fireEvent.click(trainingTab);
+
+    await waitFor(() => {
+      expect(screen.getByText('Unexpected response format from training plans service.')).toBeInTheDocument();
     });
   });
 });

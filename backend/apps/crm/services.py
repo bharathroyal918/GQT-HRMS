@@ -1,8 +1,11 @@
 """Transactional business services for Phase 2 Corporate CRM & HR Directory."""
+import logging
 from typing import Any, Dict, Optional
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 from apps.core.models import AuditLog
 from apps.crm.models import (
@@ -368,6 +371,26 @@ def schedule_follow_up(
             "reminder_channel": follow_up.reminder_channel,
         },
     )
+
+    # Phase 15 WS3: In-app notification to assigned officer if distinct
+    try:
+        if hasattr(assigned_to, "is_active") and getattr(assigned_to, "is_active", False) and assigned_to != actor:
+            from apps.core.models import NotificationCategory
+            from apps.core.services_notifications import create_notification
+            company_name = company.name if hasattr(company, "name") else "Corporate Partner"
+            due_str = follow_up.due_date.strftime("%Y-%m-%d") if hasattr(follow_up.due_date, "strftime") else str(follow_up.due_date)
+            create_notification(
+                recipient=assigned_to,
+                category=NotificationCategory.FOLLOW_UP,
+                title=f"Follow-Up Assigned: {company_name}",
+                message=f"You have been assigned an outreach follow-up for {company_name} due {due_str}.",
+                link="/crm/follow-ups",
+                metadata={"follow_up_id": str(follow_up.id), "priority": follow_up.priority},
+                idempotency_key=f"NOTIF-FU-ASSIGN-{follow_up.id}",
+            )
+    except Exception as exc:
+        logger.warning("Failed to dispatch in-app notification for follow-up %s: %s", follow_up.id, exc)
+
     return follow_up
 
 

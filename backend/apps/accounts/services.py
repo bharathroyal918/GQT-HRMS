@@ -6,6 +6,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
@@ -223,13 +224,125 @@ def confirm_password_reset(request, user: User, new_password: str) -> None:
 
 
 @transaction.atomic
+def create_user_by_admin(
+    validated_data: dict,
+    created_by: User,
+    request=None,
+) -> User:
+    """Atomically provision a new user account with hashed password, initial roles, and security audit."""
+    data = validated_data.copy()
+    roles = data.pop("roles", [])
+    password = data.pop("password")
+
+    user = User.objects.create_user(password=password, **data)
+
+    if roles:
+        assign_roles_to_user(
+            target_user=user,
+            role_codes=roles,
+            assigned_by=created_by,
+            request=request,
+        )
+
+    log_security_event(
+        action="USER_CREATED",
+        resource_id=str(user.id),
+        user=created_by,
+        request=request,
+        changes={"email": user.email, "roles": user.get_active_roles()},
+    )
+
+    return user
+
+
+def update_user_profile(
+    target_user: User,
+    validated_data: dict,
+    updated_by: User,
+    request=None,
+) -> User:
+    """Update permitted user profile fields (first_name, last_name, phone_number) and record audit trail."""
+    allowed_fields = {"first_name", "last_name", "phone_number"}
+    changes = {}
+
+    for field in allowed_fields:
+        if field in validated_data:
+            new_val = validated_data[field]
+            old_val = getattr(target_user, field)
+            if old_val != new_val:
+                changes[field] = {"before": old_val, "after": new_val}
+                setattr(target_user, field, new_val)
+
+    if changes:
+        target_user.save(update_fields=[*changes.keys(), "updated_at"])
+        log_security_event(
+            action="USER_PROFILE_UPDATED",
+            resource_id=str(target_user.id),
+            user=updated_by,
+            request=request,
+            changes=changes,
+        )
+
+    return target_user
+
+
+@transaction.atomic
 def assign_roles_to_user(
     target_user: User,
     role_codes: List[str],
     assigned_by: Optional[User] = None,
     request=None,
 ) -> List[str]:
-    """Atomically synchronize active role assignments for a user account."""
+    """Atomically synchronize active role assignments for a user account with safeguard protections."""
+    # Safeguard 1: Prevent self-demotion from ADMIN role
+    if assigned_by and target_user.id == assigned_by.id:
+        if target_user.has_role(RoleCatalog.ADMIN) and RoleCatalog.ADMIN not in role_codes:
+            raise exceptions.ValidationError("Administrators cannot revoke the ADMIN role from their own account.")
+
+    # Safeguard 2: Prevent removing ADMIN from the final active system administrator
+    if target_user.has_role(RoleCatalog.ADMIN) and RoleCatalog.ADMIN not in role_codes:
+        # Acquire row-level locks on candidate administrator accounts to serialize concurrent admin changes
+        active_admin_ids = list(
+            User.objects.filter(
+                Q(is_superuser=True)
+                | Q(
+                    role_assignments__role__code=RoleCatalog.ADMIN,
+                    role_assignments__is_active=True,
+                    role_assignments__role__is_active=True,
+                ),
+                is_active=True,
+            )
+            .distinct()
+            .values_list("id", flat=True)
+        )
+        if active_admin_ids:
+            list(User.objects.select_for_update().filter(id__in=active_admin_ids))
+
+        other_admins_count = (
+            User.objects.filter(
+                is_active=True,
+                is_superuser=False,
+                role_assignments__role__code=RoleCatalog.ADMIN,
+                role_assignments__is_active=True,
+                role_assignments__role__is_active=True,
+            )
+            .exclude(id=target_user.id)
+            .distinct()
+            .count()
+        )
+        other_superusers_count = (
+            User.objects.filter(
+                is_active=True,
+                is_superuser=True,
+            )
+            .exclude(id=target_user.id)
+            .count()
+        )
+        if (other_admins_count + other_superusers_count) == 0:
+            raise exceptions.ValidationError(
+                "Cannot revoke the ADMIN role from the final active system administrator."
+            )
+
     roles = Role.objects.filter(code__in=role_codes, is_active=True)
     role_map = {r.code: r for r in roles}
 
@@ -252,6 +365,10 @@ def assign_roles_to_user(
                 assignment.assigned_by = assigned_by
                 assignment.save(update_fields=["is_active", "assigned_by"])
 
+    # Invalidate any prefetched relations on the user model instance
+    if hasattr(target_user, "_prefetched_objects_cache"):
+        target_user._prefetched_objects_cache.clear()
+
     active_roles = target_user.get_active_roles()
 
     log_security_event(
@@ -265,15 +382,59 @@ def assign_roles_to_user(
     return active_roles
 
 
+@transaction.atomic
 def update_user_status(
     target_user: User,
     is_active: bool,
     updated_by: User,
     request=None,
 ) -> User:
-    """Update user account active state with safeguard preventing admin self-deactivation."""
+    """Update user account active state with safeguards preventing admin self-deactivation and final admin deactivation."""
     if target_user.id == updated_by.id and not is_active:
         raise exceptions.ValidationError("Administrators cannot deactivate their own account.")
+
+    # Safeguard: Prevent deactivating the last active system administrator
+    if not is_active and (target_user.has_role(RoleCatalog.ADMIN) or target_user.is_superuser):
+        active_admin_ids = list(
+            User.objects.filter(
+                Q(is_superuser=True)
+                | Q(
+                    role_assignments__role__code=RoleCatalog.ADMIN,
+                    role_assignments__is_active=True,
+                    role_assignments__role__is_active=True,
+                ),
+                is_active=True,
+            )
+            .distinct()
+            .values_list("id", flat=True)
+        )
+        if active_admin_ids:
+            list(User.objects.select_for_update().filter(id__in=active_admin_ids))
+
+        other_admins_count = (
+            User.objects.filter(
+                is_active=True,
+                is_superuser=False,
+                role_assignments__role__code=RoleCatalog.ADMIN,
+                role_assignments__is_active=True,
+                role_assignments__role__is_active=True,
+            )
+            .exclude(id=target_user.id)
+            .distinct()
+            .count()
+        )
+        other_superusers_count = (
+            User.objects.filter(
+                is_active=True,
+                is_superuser=True,
+            )
+            .exclude(id=target_user.id)
+            .count()
+        )
+        if (other_admins_count + other_superusers_count) == 0:
+            raise exceptions.ValidationError(
+                "Cannot deactivate the final active system administrator."
+            )
 
     target_user.is_active = is_active
     target_user.save(update_fields=["is_active", "updated_at"])

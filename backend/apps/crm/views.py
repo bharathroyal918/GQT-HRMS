@@ -718,41 +718,76 @@ class WhatsAppWebhookView(APIView):
     permission_classes = []  # AllowAny external webhook
 
     def get(self, request: Request) -> HttpResponse:
-        """Handle Meta Webhook challenge verification."""
+        """Handle Meta Webhook challenge verification with fail-closed security."""
+        import hmac
+        import os
+        from django.conf import settings
+
         mode = request.query_params.get("hub.mode")
         token = request.query_params.get("hub.verify_token")
         challenge = request.query_params.get("hub.challenge", "")
 
-        import os
-        from django.conf import settings
-        expected_token = getattr(settings, "WHATSAPP_WEBHOOK_VERIFY_TOKEN", "") or os.environ.get("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "")
-        if mode == "subscribe" and token and expected_token and token == expected_token:
-            return HttpResponse(challenge, content_type="text/plain", status=200)
+        is_production = (
+            getattr(settings, "ENVIRONMENT", "").lower() == "production"
+            or not getattr(settings, "DEBUG", True)
+        )
+        expected_token = (
+            getattr(settings, "WHATSAPP_WEBHOOK_VERIFY_TOKEN", "")
+            or os.environ.get("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "")
+        )
 
-        # In dev/test when no token is configured, accept default test token
-        if mode == "subscribe" and token == "gqt-hrms-wa-verify":
-            return HttpResponse(challenge, content_type="text/plain", status=200)
+        if mode == "subscribe" and token:
+            if expected_token:
+                if hmac.compare_digest(token, expected_token):
+                    return HttpResponse(challenge, content_type="text/plain", status=200)
+            elif not is_production:
+                # In non-production only, if no verify token is explicitly configured, accept dev fallback
+                if token == "gqt-hrms-wa-verify":
+                    return HttpResponse(challenge, content_type="text/plain", status=200)
 
         return HttpResponse("Verification failed", content_type="text/plain", status=403)
 
     def post(self, request: Request) -> Response:
-        """Handle incoming delivery status callbacks idempotently."""
+        """Handle incoming delivery status callbacks idempotently with fail-closed authentication."""
         import os
         from django.conf import settings
         from django.utils import timezone
         from apps.crm.adapters.whatsapp import get_whatsapp_adapter
-        adapter = get_whatsapp_adapter()
 
+        adapter = get_whatsapp_adapter()
+        is_production = (
+            getattr(settings, "ENVIRONMENT", "").lower() == "production"
+            or not getattr(settings, "DEBUG", True)
+        )
         sig_header = request.headers.get("X-Hub-Signature-256", "")
         app_secret = (
             getattr(settings, "WHATSAPP_WEBHOOK_APP_SECRET", "")
             or os.environ.get("WHATSAPP_WEBHOOK_APP_SECRET", "")
             or os.environ.get("WHATSAPP_API_SECRET", "")
         )
-        if app_secret and sig_header:
-            if not adapter.verify_webhook_signature(request.body, sig_header, app_secret):
-                return Response({"error": "Invalid signature"}, status=status.HTTP_401_UNAUTHORIZED)
 
+        # 1. In production, configured application secret is strictly mandatory
+        if is_production and not app_secret:
+            logger.error("[WHATSAPP_WEBHOOK_AUTH_FAILED] Missing WHATSAPP_WEBHOOK_APP_SECRET in production.")
+            return Response(
+                {"error": "Webhook authentication misconfigured in production."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # 2. When app_secret is configured, signature verification must fail closed
+        if app_secret:
+            if not sig_header:
+                return Response(
+                    {"error": "Missing signature header (X-Hub-Signature-256)."},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+            if not adapter.verify_webhook_signature(request.body, sig_header, app_secret):
+                return Response(
+                    {"error": "Invalid signature."},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+
+        # 3. Only mutate records after authentication succeeds
         data = request.data or {}
         entries = data.get("entry", [])
         for entry in entries:

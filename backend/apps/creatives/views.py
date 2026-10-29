@@ -241,19 +241,24 @@ class CreativeRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path=r"versions/(?P<version_id>[^/.]+)/file")
     def download_asset_file(self, request: Request, pk: str = None, version_id: str = None):
-        """Secure, authenticated streaming download of a promotional creative asset."""
+        """Secure, authenticated streaming download of a promotional creative asset (Storage-Agnostic)."""
         version = get_asset_version_by_id(pk, version_id)
         if not version or not version.file:
             raise Http404("Asset version or file not found.")
 
-        file_path = version.file.path
-        if not os.path.exists(file_path):
+        try:
+            file_handle = version.file.open("rb")
+        except (FileNotFoundError, OSError, ValueError):
             raise Http404("File not found on storage.")
 
-        file_handle = open(file_path, "rb")
-        response = FileResponse(file_handle, content_type=version.mime_type)
-        response["Content-Disposition"] = f'inline; filename="{version.file_name}"'
-        response["Content-Length"] = version.file_size_bytes
+        response = FileResponse(
+            file_handle,
+            content_type=version.mime_type or "application/octet-stream",
+        )
+        safe_filename = version.file_name or os.path.basename(version.file.name) or "creative_asset"
+        response["Content-Disposition"] = f'inline; filename="{safe_filename}"'
+        if version.file_size_bytes:
+            response["Content-Length"] = version.file_size_bytes
         return response
 
     @action(

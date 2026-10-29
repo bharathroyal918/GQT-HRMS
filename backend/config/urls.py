@@ -22,6 +22,9 @@ urlpatterns = [
                 # Core Infrastructure & Diagnostics
                 path("", include("apps.core.urls", namespace="core")),
 
+                # Global Notification Center (Phase 15 Workstream 3)
+                path("notifications/", include("apps.core.urls_notifications")),
+
                 # Identity, Authentication & RBAC
                 path("auth/", include("apps.accounts.urls")),
 

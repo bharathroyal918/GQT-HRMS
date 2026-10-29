@@ -87,6 +87,40 @@ def test_production_fails_when_db_password_is_weak(clean_env, monkeypatch):
         importlib.reload(prod)
 
 
+def test_production_fails_when_db_engine_is_not_postgresql(clean_env, monkeypatch):
+    """Production settings must raise ImproperlyConfigured if database engine is not PostgreSQL."""
+    valid_key = "b" * 64
+    monkeypatch.setenv("DJANGO_SECRET_KEY", valid_key)
+    monkeypatch.setenv("DJANGO_ALLOWED_HOSTS", "hrms.gqt.edu.in")
+    monkeypatch.setenv("DB_PASSWORD", "StrongProductionPassword2026!#$")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "True")
+    monkeypatch.setenv("CSRF_COOKIE_SECURE", "True")
+    monkeypatch.setenv("JWT_COOKIE_SECURE", "True")
+    monkeypatch.setenv("USE_SQLITE_FOR_LOCAL_DEV", "True")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with pytest.raises(ImproperlyConfigured, match="Production database ENGINE must be 'django.db.backends.postgresql'"):
+        import config.settings.production as prod
+        importlib.reload(prod)
+
+
+def test_production_fails_when_jwt_cookie_secure_is_disabled(clean_env, monkeypatch):
+    """Production settings must raise ImproperlyConfigured if JWT_COOKIE_SECURE is False."""
+    valid_key = "b" * 64
+    monkeypatch.setenv("DJANGO_SECRET_KEY", valid_key)
+    monkeypatch.setenv("DJANGO_ALLOWED_HOSTS", "hrms.gqt.edu.in")
+    monkeypatch.setenv("DB_PASSWORD", "StrongProductionPassword2026!#$")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "True")
+    monkeypatch.setenv("CSRF_COOKIE_SECURE", "True")
+    monkeypatch.setenv("JWT_COOKIE_SECURE", "False")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://postgres:StrongProductionPassword2026!#$@localhost:5432/gqt_hrms")
+    monkeypatch.setenv("USE_SQLITE_FOR_LOCAL_DEV", "False")
+
+    with pytest.raises(ImproperlyConfigured, match="JWT_COOKIE_SECURE must be enabled in production"):
+        import config.settings.production as prod
+        importlib.reload(prod)
+
+
 def test_production_succeeds_with_valid_configuration(clean_env, monkeypatch):
     """Production settings must load without errors when valid configuration is injected."""
     valid_key = "c" * 64
@@ -95,6 +129,9 @@ def test_production_succeeds_with_valid_configuration(clean_env, monkeypatch):
     monkeypatch.setenv("DB_PASSWORD", "StrongProductionPassword2026!#$")
     monkeypatch.setenv("SESSION_COOKIE_SECURE", "True")
     monkeypatch.setenv("CSRF_COOKIE_SECURE", "True")
+    monkeypatch.setenv("JWT_COOKIE_SECURE", "True")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://postgres:StrongProductionPassword2026!#$@localhost:5432/gqt_hrms")
+    monkeypatch.setenv("USE_SQLITE_FOR_LOCAL_DEV", "False")
 
     import config.settings.production as prod
     importlib.reload(prod)

@@ -28,6 +28,27 @@ export interface JobPublication {
   published_by_name: string;
   created_at: string;
   updated_at: string;
+  // Extended job requirement metadata for Student Drive Directory
+  location?: string;
+  employment_type?: string;
+  employment_type_display?: string;
+  work_arrangement?: string;
+  work_arrangement_display?: string;
+  min_salary?: string | number | null;
+  max_salary?: string | number | null;
+  salary_currency?: string;
+  registration_deadline?: string;
+  interview_date?: string | null;
+  eligibility_criteria?: string;
+  min_cgpa?: string | number | null;
+  skills_required?: string;
+  job_description?: string;
+  openings_count?: number;
+  has_bond?: boolean;
+  bond_details?: string;
+  job_status?: string;
+  job_is_archived?: boolean;
+  eligibility_preview?: EligibilityPreview | null;
 }
 
 export interface JobPublicationCreatePayload {
@@ -124,6 +145,17 @@ export interface EligibilityEvaluation {
   override_by_name: string | null;
   override_at: string | null;
   evaluated_at: string;
+}
+
+export interface EligibilityPreview {
+  job_requirement_id?: string;
+  job_title?: string;
+  company_name?: string;
+  status: EligibilityStatus;
+  status_display: string;
+  passed: boolean;
+  details: EligibilityCriterionDetail[];
+  criteria_snapshot: Record<string, any>;
 }
 
 export type StudentApplicationStatus = 'APPLIED' | 'ELIGIBLE' | 'INELIGIBLE' | 'OVERRIDDEN' | 'WITHDRAWN';

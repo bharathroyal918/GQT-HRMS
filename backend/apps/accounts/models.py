@@ -150,6 +150,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         """Return the list of unique role codes actively assigned to this user."""
         if self.is_superuser:
             return [RoleCatalog.ADMIN]
+        if hasattr(self, "_prefetched_objects_cache") and "role_assignments" in self._prefetched_objects_cache:
+            return sorted(list({
+                ra.role.code for ra in self.role_assignments.all()
+                if ra.is_active and ra.role.is_active
+            }))
         return list(
             self.role_assignments.filter(is_active=True, role__is_active=True)
             .values_list("role__code", flat=True)

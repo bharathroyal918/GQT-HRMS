@@ -24,6 +24,56 @@ class JobPublicationSerializer(serializers.ModelSerializer):
     channel_display = serializers.CharField(source="get_channel_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
 
+    # Job requirement attributes for student drive visibility
+    location = serializers.CharField(source="job_requirement.location", read_only=True)
+    min_salary = serializers.DecimalField(source="job_requirement.min_salary", max_digits=12, decimal_places=2, read_only=True, allow_null=True)
+    max_salary = serializers.DecimalField(source="job_requirement.max_salary", max_digits=12, decimal_places=2, read_only=True, allow_null=True)
+    salary_currency = serializers.CharField(source="job_requirement.salary_currency", read_only=True)
+    employment_type = serializers.CharField(source="job_requirement.employment_type", read_only=True)
+    employment_type_display = serializers.CharField(source="job_requirement.get_employment_type_display", read_only=True)
+    work_arrangement = serializers.CharField(source="job_requirement.work_arrangement", read_only=True)
+    work_arrangement_display = serializers.CharField(source="job_requirement.get_work_arrangement_display", read_only=True)
+    registration_deadline = serializers.DateTimeField(source="job_requirement.registration_deadline", read_only=True)
+    interview_date = serializers.DateField(source="job_requirement.interview_date", read_only=True, allow_null=True)
+    eligibility_criteria = serializers.CharField(source="job_requirement.eligibility_criteria", read_only=True)
+    min_cgpa = serializers.DecimalField(source="job_requirement.min_cgpa", max_digits=4, decimal_places=2, read_only=True, allow_null=True)
+    skills_required = serializers.CharField(source="job_requirement.skills_required", read_only=True)
+    job_description = serializers.CharField(source="job_requirement.job_description", read_only=True)
+    openings_count = serializers.IntegerField(source="job_requirement.openings_count", read_only=True)
+    has_bond = serializers.BooleanField(source="job_requirement.has_bond", read_only=True)
+    bond_details = serializers.CharField(source="job_requirement.bond_details", read_only=True)
+    job_status = serializers.CharField(source="job_requirement.status", read_only=True)
+    job_is_archived = serializers.BooleanField(source="job_requirement.is_archived", read_only=True)
+    eligibility_preview = serializers.SerializerMethodField()
+
+    def get_eligibility_preview(self, obj):
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return None
+        if not hasattr(request, "_student_profile_cache"):
+            from apps.students.selectors import get_student_profile_by_user
+            request._student_profile_cache = get_student_profile_by_user(request.user)
+        student_profile = request._student_profile_cache
+        if not student_profile:
+            return None
+
+        from apps.students.services import evaluate_student_eligibility
+        from apps.students.models import EligibilityStatus
+
+        eval_result = evaluate_student_eligibility(obj.job_requirement, student_profile)
+        status_display_map = {
+            EligibilityStatus.ELIGIBLE: "Eligible",
+            EligibilityStatus.INELIGIBLE: "Ineligible",
+            EligibilityStatus.INCOMPLETE: "Profile Incomplete",
+        }
+        return {
+            "status": eval_result["status"],
+            "status_display": status_display_map.get(eval_result["status"], eval_result["status"]),
+            "passed": eval_result["passed"],
+            "details": eval_result["details"],
+            "criteria_snapshot": eval_result["criteria_snapshot"],
+        }
+
     class Meta:
         model = JobPublication
         fields = [
@@ -48,6 +98,26 @@ class JobPublicationSerializer(serializers.ModelSerializer):
             "published_by_name",
             "created_at",
             "updated_at",
+            "location",
+            "min_salary",
+            "max_salary",
+            "salary_currency",
+            "employment_type",
+            "employment_type_display",
+            "work_arrangement",
+            "work_arrangement_display",
+            "registration_deadline",
+            "interview_date",
+            "eligibility_criteria",
+            "min_cgpa",
+            "skills_required",
+            "job_description",
+            "openings_count",
+            "has_bond",
+            "bond_details",
+            "job_status",
+            "job_is_archived",
+            "eligibility_preview",
         ]
         read_only_fields = fields
 
