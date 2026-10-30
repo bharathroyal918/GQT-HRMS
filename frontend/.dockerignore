@@ -1,0 +1,29 @@
+# Node dependencies and build artifacts
+node_modules/
+dist/
+build/
+.turbo/
+
+# Testing and coverage caches
+coverage/
+.vitest/
+
+# Environment configurations & local secrets
+.env
+.env.*
+!.env.example
+
+# NPM logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Git metadata
+.git/
+.gitignore
+
+# OS specific files
+.DS_Store
+Thumbs.db
+Desktop.ini

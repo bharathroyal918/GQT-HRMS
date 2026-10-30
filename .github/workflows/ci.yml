@@ -1,0 +1,193 @@
+name: GQT HRMS Continuous Integration & Quality Gates
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-quality-gates:
+    name: Backend Quality Gates (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'backend/requirements.txt'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: "[Gate 1/6] Django System Checks"
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.test
+        run: |
+          python manage.py check
+
+      - name: "[Gate 2/6] Migration Consistency & Drift Check"
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.test
+        run: |
+          python manage.py makemigrations --check --dry-run
+
+      - name: "[Gate 3/6] Backend Automated Pytest Suite"
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.test
+        run: |
+          pytest tests/ -v --durations=10
+
+  frontend-quality-gates:
+    name: Frontend Quality Gates (Node 22)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install frontend dependencies
+        run: |
+          npm ci --no-audit --prefer-offline
+
+      - name: "[Gate 4/6] Frontend TypeScript Strict Type Check"
+        run: |
+          npm run lint
+
+      - name: "[Gate 5/6] Frontend Vitest Component Suite"
+        run: |
+          npm test -- --run
+
+      - name: "[Gate 6/6] Frontend Production Build & Bundle Optimization"
+        env:
+          VITE_API_BASE_URL: /api/v1
+        run: |
+          npm run build
+
+  container-packaging-validation:
+    name: Docker Packaging & Compose Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose Configuration Syntax
+        run: |
+          docker compose config -q
+          echo "PASS: docker-compose.yml configuration syntax validated."
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Backend Dockerfile
+        run: |
+          docker build -t gqt-hrms-backend:ci-validate -f backend/Dockerfile backend/
+          echo "PASS: Backend Dockerfile build validated."
+
+      - name: Validate Frontend Dockerfile
+        run: |
+          docker build --build-arg VITE_API_BASE_URL=/api/v1 -t gqt-hrms-frontend:ci-validate -f frontend/Dockerfile frontend/
+          echo "PASS: Frontend Dockerfile build validated."
+
+  postgresql16-staging-verification:
+    name: PostgreSQL 16 Staging Integration & Concurrency Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: gqt_hrms_staging
+          POSTGRES_USER: gqt_hrms_ci
+          POSTGRES_PASSWORD: ci_staging_disposable_password_999
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'backend/requirements.txt'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Provision PostgreSQL 16 Least-Privilege Application Role
+        run: |
+          python -c "
+          import psycopg
+          conn = psycopg.connect('postgresql://gqt_hrms_ci:ci_staging_disposable_password_999@localhost:5432/gqt_hrms_staging', autocommit=True)
+          with conn.cursor() as cur:
+              cur.execute(\"SELECT 1 FROM pg_roles WHERE rolname = 'gqt_hrms_app'\")
+              if cur.fetchone():
+                  cur.execute(\"ALTER ROLE gqt_hrms_app WITH LOGIN CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION PASSWORD 'gqt_staging_password_secure'\")
+              else:
+                  cur.execute(\"CREATE ROLE gqt_hrms_app WITH LOGIN CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION PASSWORD 'gqt_staging_password_secure'\")
+              cur.execute(\"GRANT ALL PRIVILEGES ON DATABASE gqt_hrms_staging TO gqt_hrms_app\")
+              cur.execute(\"GRANT ALL ON SCHEMA public TO gqt_hrms_app\")
+          conn.close()
+          print('PASS: Least-privilege application role gqt_hrms_app deterministically provisioned.')
+          "
+
+      - name: Verify PostgreSQL 16 Schema Migrations from Scratch
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.local
+          DATABASE_URL: postgresql://gqt_hrms_app:gqt_staging_password_secure@localhost:5432/gqt_hrms_staging
+          USE_SQLITE_FOR_LOCAL_DEV: "False"
+          DB_SSLMODE: disable
+        run: |
+          python manage.py migrate --no-input
+          python manage.py makemigrations --check --dry-run
+          echo "PASS: Clean PostgreSQL 16 migration and drift check completed."
+
+      - name: Run PostgreSQL 16 Integration & Multi-Connection Concurrency Suite
+        env:
+          POSTGRES_TEST_DATABASE_URL: postgresql://gqt_hrms_app:gqt_staging_password_secure@localhost:5432/gqt_hrms_staging
+          DB_SSLMODE: disable
+        run: |
+          pytest tests/test_postgresql_staging.py -v --durations=10

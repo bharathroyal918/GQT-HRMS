@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/coverage/
+
+# Testing caches
+.pytest_cache/
+.coverage
+htmlcov/
+.vitest/
+
+# Local databases & secrets
+*.sqlite3
+dev_local.sqlite3
+.env
+.env.*
+!.env.example
+
+# Version control & OS
+.git/
+.gitignore
+.DS_Store
+Thumbs.db
