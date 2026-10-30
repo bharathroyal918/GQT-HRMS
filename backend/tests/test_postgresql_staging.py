@@ -69,6 +69,8 @@ def require_postgres():
     engine = connection.settings_dict.get("ENGINE", "")
     if "postgresql" not in engine:
         pytest.skip(f"Test requires PostgreSQL backend, active engine is: {engine}")
+    yield
+    connections.close_all()
 
 
 # ==============================================================================

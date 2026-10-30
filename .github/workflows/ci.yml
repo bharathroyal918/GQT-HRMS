@@ -157,9 +157,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Provision PostgreSQL 16 Least-Privilege Application Role
+        run: |
+          python -c "
+          import psycopg
+          conn = psycopg.connect('postgresql://gqt_hrms_ci:ci_staging_disposable_password_999@localhost:5432/gqt_hrms_staging', autocommit=True)
+          with conn.cursor() as cur:
+              cur.execute(\"SELECT 1 FROM pg_roles WHERE rolname = 'gqt_hrms_app'\")
+              if cur.fetchone():
+                  cur.execute(\"ALTER ROLE gqt_hrms_app WITH LOGIN CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION PASSWORD 'gqt_staging_password_secure'\")
+              else:
+                  cur.execute(\"CREATE ROLE gqt_hrms_app WITH LOGIN CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION PASSWORD 'gqt_staging_password_secure'\")
+              cur.execute(\"GRANT ALL PRIVILEGES ON DATABASE gqt_hrms_staging TO gqt_hrms_app\")
+              cur.execute(\"GRANT ALL ON SCHEMA public TO gqt_hrms_app\")
+          conn.close()
+          print('PASS: Least-privilege application role gqt_hrms_app deterministically provisioned.')
+          "
+
       - name: Verify PostgreSQL 16 Schema Migrations from Scratch
         env:
-          DATABASE_URL: postgresql://gqt_hrms_ci:ci_staging_disposable_password_999@localhost:5432/gqt_hrms_staging
+          DJANGO_SETTINGS_MODULE: config.settings.local
+          DATABASE_URL: postgresql://gqt_hrms_app:gqt_staging_password_secure@localhost:5432/gqt_hrms_staging
           USE_SQLITE_FOR_LOCAL_DEV: "False"
           DB_SSLMODE: disable
         run: |
@@ -169,7 +187,7 @@ jobs:
 
       - name: Run PostgreSQL 16 Integration & Multi-Connection Concurrency Suite
         env:
-          POSTGRES_TEST_DATABASE_URL: postgresql://gqt_hrms_ci:ci_staging_disposable_password_999@localhost:5432/gqt_hrms_staging
+          POSTGRES_TEST_DATABASE_URL: postgresql://gqt_hrms_app:gqt_staging_password_secure@localhost:5432/gqt_hrms_staging
           DB_SSLMODE: disable
         run: |
           pytest tests/test_postgresql_staging.py -v --durations=10
