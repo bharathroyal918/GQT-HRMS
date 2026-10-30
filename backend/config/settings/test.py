@@ -14,12 +14,21 @@ ENVIRONMENT = "testing"
 SECRET_KEY = "django-insecure-test-environment-isolated-secret-key-for-pytest-runs"
 ALLOWED_HOSTS = ["*"]
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": ":memory:",
+# Database Configuration: SQLite in-memory by default, or PostgreSQL 16 when POSTGRES_TEST_DATABASE_URL is provided
+postgres_test_url = os.environ.get("POSTGRES_TEST_DATABASE_URL")
+if postgres_test_url:
+    parsed_db = env.db_url_config(postgres_test_url)
+    parsed_db.setdefault("OPTIONS", {})
+    if os.environ.get("DB_SSLMODE"):
+        parsed_db["OPTIONS"]["sslmode"] = os.environ["DB_SSLMODE"]
+    DATABASES = {"default": parsed_db}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
     }
-}
 
 # Use fast hasher for automated unit/integration tests
 PASSWORD_HASHERS = [

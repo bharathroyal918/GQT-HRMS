@@ -1,0 +1,67 @@
+# ==============================================================================
+# GQT HRMS & Recruitment CRM — Production Docker Compose Configuration
+# Orchestrates Backend (Django + Gunicorn) and Frontend (React SPA + Nginx)
+# ==============================================================================
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: gqt-hrms-backend:latest
+    container_name: gqt-hrms-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.production
+      - ENVIRONMENT=production
+      - DEBUG=False
+      - TIMEZONE=Asia/Kolkata
+    volumes:
+      - media_data:/app/media
+      - static_data:/app/staticfiles
+    networks:
+      - gqt_internal
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=/api/v1
+    image: gqt-hrms-frontend:latest
+    container_name: gqt-hrms-frontend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-80}:80"
+    volumes:
+      - static_data:/usr/share/nginx/static:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - gqt_internal
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  media_data:
+    name: gqt_hrms_media_data
+  static_data:
+    name: gqt_hrms_static_data
+
+networks:
+  gqt_internal:
+    name: gqt_hrms_network
+    driver: bridge
